@@ -1,0 +1,7 @@
+source,role,release_or_product,local_path,status,official_reference,notes
+Caravan,primary,version 1.6,Caravan/,code verified; NetCDF archive actively downloading,https://zenodo.org/records/15529786,"Caravan-nc.tar.gz.partial is receiving a resumable transfer; full archive expected size 24,775,734,275 bytes; MD5 ad3a7767db059f218380e9cce5f72452; CSV is alternate encoding"
+GloFAS,optional context/comparison,unspecified,,not selected,https://cds.climate.copernicus.eu/datasets,"Requires product type/version, query area, variables, time range, and possibly CDS account/API credentials"
+Copernicus Emergency Management Service,optional mapping extension,unspecified,,not selected,https://emergency.copernicus.eu/,"Requires specific product/event and area; flood extent is not discharge"
+WeatherBench 2,weather benchmark reference,unspecified,,not selected,https://weatherbench2.readthedocs.io/en/latest/data-guide.html,"Public cloud bucket; large multi-resolution dataset collection with varying licenses"
+NASA POWER,optional meteorological inputs,unspecified,,not selected,https://power.larc.nasa.gov/docs/services/api/,"Requires location/area, parameters, cadence, and period"
+HydroShare,optional repository/artifacts,unspecified,,not selected,https://www.hydroshare.org/,"No single aggregate dataset; select resource IDs and inspect per-resource terms"

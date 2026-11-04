@@ -1,0 +1,8 @@
+.venv/
+
+# Keep downloaded archives, partial transfers, and transfer logs local.
+data/Caravan/*.zip
+data/Caravan/*.tar.gz
+data/Caravan/*.tar.gz.partial
+data/Caravan/*.log
+data/Caravan/download.status.txt
