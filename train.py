@@ -7,6 +7,7 @@ import csv
 import hashlib
 import json
 import re
+import shutil
 import sys
 import threading
 import time
@@ -1057,6 +1058,280 @@ def merge_catchment_scores(
     return merged
 
 
+def evaluate_leaf_edit_candidates(
+    run_name: str, horizons: tuple[int, ...], leaf_scale: float
+) -> None:
+    """Compare original models with one leaf-shrunk copy; never fit a model here."""
+    source_metrics_path = REPORT_DIR / f"benchmark_metrics_{run_name}.json"
+    if not source_metrics_path.exists():
+        raise SystemExit(f"Run report not found: {source_metrics_path}")
+    with source_metrics_path.open(encoding="utf-8") as handle:
+        source_report = json.load(handle)
+
+    archive = FINAL_ARCHIVE if FINAL_ARCHIVE.exists() else PARTIAL_ARCHIVE
+    if not archive.exists() or archive.stat().st_size != EXPECTED_ARCHIVE_SIZE:
+        raise SystemExit("Leaf-edit validation requires the complete Caravan archive")
+    _, validation_assignments = read_split()
+    validation_filter = selected_catchments(validation_assignments)
+    static_attributes, static_feature_names = load_static_attributes()
+    validation_feature_frames: list[pd.DataFrame] = []
+    validation_targets = {horizon: [] for horizon in horizons}
+    validation_target_days = {horizon: [] for horizon in horizons}
+    validation_flows: list[np.ndarray] = []
+    validation_sources: list[str] = []
+    validation_gauges: list[str] = []
+    found_validation: set[tuple[str, str]] = set()
+    row_cap = int(source_report["validation_rows_per_catchment_cap"])
+    seed = int(source_report["seed"])
+    max_horizon = max(horizons)
+
+    for source, gauge_id, dataset in iter_netcdf(
+        archive, gauge_filter=validation_filter, allow_partial=False
+    ):
+        key = (source, gauge_id)
+        features, targets, target_days, flow = build_features(
+            dataset, source, gauge_id, list(horizons)
+        )
+        usable_count = max(0, flow.size - max_horizon)
+        valid_origin = np.isfinite(flow[:usable_count]) & (flow[:usable_count] >= 0)
+        candidates = np.flatnonzero(valid_origin)
+        indices = sample_rows(
+            source,
+            gauge_id,
+            candidates,
+            row_cap,
+            "public_validation",
+            seed,
+        )
+        if not indices.size:
+            continue
+        selected_features = features.iloc[indices].reset_index(drop=True)
+        selected_features = attach_static_attributes(
+            selected_features, static_attributes.get(key), static_feature_names
+        )
+        validation_feature_frames.append(selected_features)
+        validation_flows.append(flow[indices])
+        validation_sources.extend([source] * len(indices))
+        validation_gauges.extend([gauge_id] * len(indices))
+        for horizon in horizons:
+            validation_targets[horizon].append(targets[horizon][indices])
+            validation_target_days[horizon].append(target_days[horizon][indices])
+        found_validation.add(key)
+        if len(found_validation) % 500 == 0:
+            print(
+                f"Loaded {len(found_validation):,} validation catchments for "
+                "leaf-edit scoring",
+                flush=True,
+            )
+
+    if len(found_validation) != len(validation_filter):
+        raise SystemExit(
+            "Validation archive coverage mismatch during leaf-edit scoring: "
+            f"found {len(found_validation)} of {len(validation_filter)} catchments"
+        )
+
+    X_validation = pd.concat(validation_feature_frames, ignore_index=True)
+    X_validation["source"] = validation_sources
+    q_validation = np.concatenate(validation_flows).astype(np.float32)
+    validation_catchments = (
+        pd.DataFrame(
+            {
+                "source": validation_sources,
+                "gauge_id": validation_gauges,
+            }
+        )
+        .drop_duplicates()
+        .sort_values(["source", "gauge_id"])
+        .reset_index(drop=True)
+    )
+    validation_catchments["selection_half"] = (
+        validation_catchments.groupby("source", observed=True).cumcount() % 2 == 0
+    )
+    selection_keys = set(
+        validation_catchments.loc[
+            validation_catchments["selection_half"], ["source", "gauge_id"]
+        ].itertuples(index=False, name=None)
+    )
+    selection_mask_all = np.fromiter(
+        (
+            (source, gauge_id) in selection_keys
+            for source, gauge_id in zip(validation_sources, validation_gauges)
+        ),
+        dtype=bool,
+        count=len(validation_sources),
+    )
+
+    suffix = f"_{run_name}"
+    experiment_root = (
+        MODEL_DIR / "node_edit_experiments" / f"{run_name}_leaf{leaf_scale:g}"
+    )
+    if experiment_root.exists():
+        raise SystemExit(f"Leaf-edit output already exists: {experiment_root}")
+    original_dir = experiment_root / "original"
+    edited_dir = experiment_root / "edited"
+    best_dir = experiment_root / "best"
+    for directory in (original_dir, edited_dir, best_dir):
+        directory.mkdir(parents=True, exist_ok=False)
+
+    results: dict[str, dict] = {}
+    for horizon in horizons:
+        y = np.concatenate(validation_targets[horizon]).astype(np.float32)
+        target_days = np.concatenate(validation_target_days[horizon]).astype(np.int16)
+        mask = np.isfinite(y) & (y >= 0)
+        X_horizon = X_validation.loc[mask].reset_index(drop=True)
+        target = y[mask]
+        origin_flow = q_validation[mask]
+        frame = pd.DataFrame(
+            {
+                "source": np.asarray(validation_sources)[mask],
+                "gauge_id": np.asarray(validation_gauges)[mask],
+                "target": target,
+                "target_day_of_year": target_days[mask],
+            }
+        )
+        select = selection_mask_all[mask]
+        if not np.any(select) or not np.any(~select):
+            raise SystemExit("Could not form separate selection and audit catchments")
+
+        source_model_path = MODEL_DIR / (f"caravan_streamflow_h{horizon}d{suffix}.cbm")
+        if not source_model_path.exists():
+            raise SystemExit(f"Regression model not found: {source_model_path}")
+        original_path = original_dir / f"caravan_streamflow_h{horizon}d.cbm"
+        edited_path = edited_dir / (
+            f"caravan_streamflow_h{horizon}d_leafscale-{leaf_scale:g}.cbm"
+        )
+        shutil.copy2(source_model_path, original_path)
+        original_model = CatBoostRegressor()
+        original_model.load_model(str(original_path))
+        edited_model = CatBoostRegressor()
+        edited_model.load_model(str(source_model_path))
+        original_leaves = np.asarray(edited_model.get_leaf_values(), dtype=np.float64)
+        edited_model.set_leaf_values(original_leaves * leaf_scale)
+        edited_model.save_model(str(edited_path))
+        edited_model = CatBoostRegressor()
+        edited_model.load_model(str(edited_path))
+
+        original_prediction = np.maximum(
+            0.0,
+            np.sinh(
+                np.clip(
+                    np.arcsinh(origin_flow) + original_model.predict(X_horizon),
+                    -20.0,
+                    20.0,
+                )
+            ),
+        )
+        edited_prediction = np.maximum(
+            0.0,
+            np.sinh(
+                np.clip(
+                    np.arcsinh(origin_flow) + edited_model.predict(X_horizon),
+                    -20.0,
+                    20.0,
+                )
+            ),
+        )
+
+        full_metrics = {}
+        selection_metrics = {}
+        audit_metrics = {}
+        regression_event_metrics = {}
+        horizon_report = source_report["horizons"][str(horizon)]
+        event_thresholds = horizon_report["events_and_probabilities"][
+            "threshold_by_source_mm_day"
+        ]
+        event_targets = event_labels(frame, event_thresholds)
+        event_limits = frame["source"].map(event_thresholds).to_numpy()
+        for label, prediction in (
+            ("original", original_prediction),
+            ("edited", edited_prediction),
+        ):
+            metrics, _ = aggregate_metrics(frame, prediction, label)
+            full_metrics[label] = metrics
+            select_metrics, _ = aggregate_metrics(
+                frame.loc[select].reset_index(drop=True), prediction[select], label
+            )
+            selection_metrics[label] = select_metrics
+            audit_metrics[label], _ = aggregate_metrics(
+                frame.loc[~select].reset_index(drop=True),
+                prediction[~select],
+                label,
+            )
+            regression_event_metrics[label] = contingency_metrics(
+                event_targets, prediction > event_limits
+            )
+
+        chosen = (
+            "edited"
+            if selection_metrics["edited"]["rmse"]
+            < selection_metrics["original"]["rmse"]
+            else "original"
+        )
+        best_source = edited_path if chosen == "edited" else original_path
+        shutil.copy2(
+            best_source,
+            best_dir / f"caravan_streamflow_h{horizon}d.cbm",
+        )
+
+        unchanged_artifacts = {}
+        for kind in ("highflow", "uncertainty", "extremeflow"):
+            artifact = MODEL_DIR / (f"caravan_{kind}_h{horizon}d{suffix}.cbm")
+            if artifact.exists():
+                unchanged_artifacts[kind] = int(artifact.stat().st_size)
+                for directory in (original_dir, edited_dir, best_dir):
+                    shutil.copy2(artifact, directory / artifact.name)
+
+        results[str(horizon)] = {
+            "leaf_value_scale": float(leaf_scale),
+            "edited_leaf_values": int(original_leaves.size),
+            "selected_model": chosen,
+            "selection_rule": (
+                "Lower pooled RMSE on the deterministic selection half of "
+                "public-validation catchments; the other half is audit only."
+            ),
+            "catchments_in_selection_half": int(
+                validation_catchments["selection_half"].sum()
+            ),
+            "catchments_in_audit_half": int(
+                (~validation_catchments["selection_half"]).sum()
+            ),
+            "all_validation_metrics": full_metrics,
+            "selection_half_metrics": selection_metrics,
+            "audit_half_metrics": audit_metrics,
+            "regression_highflow_detection": regression_event_metrics,
+            "auxiliary_models_unchanged_bytes": unchanged_artifacts,
+            "best_model_path": str(
+                (best_dir / f"caravan_streamflow_h{horizon}d.cbm").relative_to(
+                    PROJECT_ROOT
+                )
+            ),
+        }
+        print(
+            f"{horizon}-day leaf comparison: selected {chosen}; "
+            f"audit RMSE original={audit_metrics['original']['rmse']:.4f}, "
+            f"edited={audit_metrics['edited']['rmse']:.4f}",
+            flush=True,
+        )
+        del original_model, edited_model
+
+    comparison_report = {
+        "run_name": run_name,
+        "leaf_edit": "Multiply every regression-tree leaf output by a fixed scalar.",
+        "leaf_value_scale": float(leaf_scale),
+        "models_copied_without_change": ["highflow", "uncertainty", "extremeflow"],
+        "evaluation": (
+            "Public validation catchments are divided by identity into selection "
+            "and audit halves; no model is fit in this command."
+        ),
+        "horizons": results,
+    }
+    comparison_path = REPORT_DIR / f"node_edit_comparison_{run_name}.json"
+    with comparison_path.open("w", encoding="utf-8") as handle:
+        json.dump(comparison_report, handle, indent=2, allow_nan=False)
+    print(f"Saved leaf-edit candidates under {experiment_root}", flush=True)
+    print(f"Saved leaf-edit comparison to {comparison_path}", flush=True)
+
+
 def main(argv: list[str] | None = None) -> None:
     run_started = time.perf_counter()
     resource_monitor = ProcessResourceMonitor()
@@ -1079,9 +1354,32 @@ def main(argv: list[str] | None = None) -> None:
         default="CPU",
         help="CatBoost training device; GPU uses CUDA device 0.",
     )
+    parser.add_argument(
+        "--compare-leaf-edit",
+        action="store_true",
+        help="Copy a completed run's models, shrink regression leaves, and validate without fitting.",
+    )
+    parser.add_argument(
+        "--leaf-scale",
+        type=float,
+        default=0.90,
+        help="Fixed multiplier for copied regression leaf values in validation-only mode.",
+    )
     args = parser.parse_args(argv)
     if args.run_name and re.fullmatch(r"[A-Za-z0-9_-]+", args.run_name) is None:
         raise SystemExit("--run-name may contain only letters, digits, '_' and '-'.")
+
+    if args.compare_leaf_edit:
+        if not args.run_name:
+            raise SystemExit(
+                "--compare-leaf-edit requires --run-name for completed artifacts."
+            )
+        if not 0 < args.leaf_scale < 2:
+            raise SystemExit("--leaf-scale must be greater than 0 and less than 2.")
+        horizons = tuple(load_config(args.horizons)["horizons_days"])
+        resource_monitor.stop()
+        evaluate_leaf_edit_candidates(args.run_name, horizons, args.leaf_scale)
+        return
 
     config = load_config(args.horizons)
     catboost_compute = {"task_type": args.task_type}
