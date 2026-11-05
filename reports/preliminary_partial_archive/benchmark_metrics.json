@@ -1,0 +1,489 @@
+{
+  "task": "multi-horizon streamflow forecast in mm/day",
+  "forecast_origin": "end of day t; predictors only through day t",
+  "horizons_days": [
+    1,
+    3,
+    5
+  ],
+  "archive": "Caravan-nc.tar.gz.partial",
+  "archive_bytes_at_run": 15526416384,
+  "archive_partial_at_run": true,
+  "expected_archive_bytes": 24775734275,
+  "split_manifest": "data\\Caravan\\manifests\\public_catchment_split.csv",
+  "split_note": "Organizer-proposed public catchment split; not an official challenge leaderboard.",
+  "train_catchments_used": 7162,
+  "validation_catchments_used": 1752,
+  "train_rows_by_source": {
+    "camels": 62837,
+    "camelsbr": 87861,
+    "camelscl": 33267,
+    "hysets": 330555,
+    "lamah": 75948
+  },
+  "validation_rows_by_source": {
+    "camels": 27174,
+    "camelsbr": 39668,
+    "camelscl": 18885,
+    "hysets": 159289,
+    "lamah": 35769
+  },
+  "row_sampling": "deterministic uniform sample across each catchment record",
+  "train_rows_per_catchment_cap": 250,
+  "validation_rows_per_catchment_cap": 500,
+  "features": [
+    "flow_lag_0",
+    "flow_lag_1",
+    "flow_lag_2",
+    "flow_lag_3",
+    "flow_lag_7",
+    "flow_lag_14",
+    "precip_lag_0",
+    "precip_lag_1",
+    "precip_lag_2",
+    "precip_lag_3",
+    "precip_lag_7",
+    "precip_lag_14",
+    "precip_sum_3d",
+    "precip_sum_7d",
+    "precip_sum_14d",
+    "potential_evaporation_sum_ERA5_LAND",
+    "potential_evaporation_sum_FAO_PENMAN_MONTEITH",
+    "temperature_2m_mean",
+    "dewpoint_temperature_2m_mean",
+    "snow_depth_water_equivalent_mean",
+    "surface_net_solar_radiation_mean",
+    "surface_net_thermal_radiation_mean",
+    "surface_pressure_mean",
+    "u_component_of_wind_10m_mean",
+    "v_component_of_wind_10m_mean",
+    "volumetric_soil_water_layer_1_mean",
+    "volumetric_soil_water_layer_2_mean",
+    "volumetric_soil_water_layer_3_mean",
+    "volumetric_soil_water_layer_4_mean",
+    "day_of_year_sin",
+    "day_of_year_cos",
+    "source"
+  ],
+  "model_config": {
+    "iterations": 500,
+    "depth": 8,
+    "learning_rate": 0.05,
+    "l2_leaf_reg": 5.0,
+    "thread_count": 4
+  },
+  "seed": 2026,
+  "horizons": {
+    "1": {
+      "target": "streamflow(t+1)",
+      "train_rows": 589993,
+      "validation": 280578,
+      "baseline": {
+        "rmse": 2.975486725719311,
+        "mae": 0.40196779473983607,
+        "nse": 0.32122639247065354,
+        "median_catchment_nse": 0.7401577442814415,
+        "mean_catchment_nse": 0.0164733471650453,
+        "catchments_scored": 1752,
+        "rows_scored": 280578,
+        "prediction": "persistence: streamflow(t)"
+      },
+      "model": {
+        "rmse": 2.701122871230721,
+        "mae": 0.3728179652561815,
+        "nse": 0.4406320311392742,
+        "median_catchment_nse": 0.7606127532237503,
+        "mean_catchment_nse": -6.078153834380192,
+        "catchments_scored": 1752,
+        "rows_scored": 280578,
+        "prediction": "CatBoost residual correction"
+      },
+      "by_source": {
+        "camels": {
+          "persistence": {
+            "rmse": 2.503402848754627,
+            "mae": 0.4436124091261831,
+            "nse": 0.5680275332757123,
+            "median_catchment_nse": 0.5653764632960736,
+            "mean_catchment_nse": 0.4000716871337615,
+            "catchments_scored": 119,
+            "rows_scored": 27173,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.1354143850079126,
+            "mae": 0.39091013072475006,
+            "nse": 0.685689485038304,
+            "median_catchment_nse": 0.7134791339154223,
+            "mean_catchment_nse": 0.5952460211479711,
+            "catchments_scored": 119,
+            "rows_scored": 27173,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsbr": {
+          "persistence": {
+            "rmse": 1.7908357051357107,
+            "mae": 0.3081605314688806,
+            "nse": 0.4323952196175328,
+            "median_catchment_nse": 0.8239950128119754,
+            "mean_catchment_nse": 0.703812070264463,
+            "catchments_scored": 160,
+            "rows_scored": 39631,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.5424242650400983,
+            "mae": 0.3187309962920865,
+            "nse": 0.578941680466472,
+            "median_catchment_nse": 0.7991787878185475,
+            "mean_catchment_nse": 0.6943098080076603,
+            "catchments_scored": 160,
+            "rows_scored": 39631,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelscl": {
+          "persistence": {
+            "rmse": 1.5713926772881708,
+            "mae": 0.2936969700424374,
+            "nse": 0.838917286599533,
+            "median_catchment_nse": 0.9054502152122572,
+            "mean_catchment_nse": 0.8445803064132303,
+            "catchments_scored": 105,
+            "rows_scored": 18810,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.229749229147361,
+            "mae": 0.27748929185698185,
+            "nse": 0.9013464757031725,
+            "median_catchment_nse": 0.8697351664065849,
+            "mean_catchment_nse": -0.15332636424803706,
+            "catchments_scored": 105,
+            "rows_scored": 18810,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "hysets": {
+          "persistence": {
+            "rmse": 3.6041075259997486,
+            "mae": 0.43590885621048603,
+            "nse": 0.15938737118062674,
+            "median_catchment_nse": 0.7085348374151397,
+            "mean_catchment_nse": -0.2701682194144235,
+            "catchments_scored": 1207,
+            "rows_scored": 159200,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.3123647986632365,
+            "mae": 0.3972832009818279,
+            "nse": 0.2899699116958725,
+            "median_catchment_nse": 0.7232446449628325,
+            "mean_catchment_nse": -9.06705441610357,
+            "catchments_scored": 1207,
+            "rows_scored": 159200,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "lamah": {
+          "persistence": {
+            "rmse": 1.4220131713440167,
+            "mae": 0.38013644954359443,
+            "nse": 0.7379923614771202,
+            "median_catchment_nse": 0.7830473339864572,
+            "mean_catchment_nse": 0.649824490986648,
+            "catchments_scored": 161,
+            "rows_scored": 35764,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.2261728902765872,
+            "mae": 0.36024020756282205,
+            "nse": 0.8051904986382832,
+            "median_catchment_nse": 0.8087267041749597,
+            "mean_catchment_nse": 0.7095657263509665,
+            "catchments_scored": 161,
+            "rows_scored": 35764,
+            "prediction": "CatBoost residual correction"
+          }
+        }
+      }
+    },
+    "3": {
+      "target": "streamflow(t+3)",
+      "train_rows": 589406,
+      "validation": 280314,
+      "baseline": {
+        "rmse": 3.3175209132969874,
+        "mae": 0.6888724070884567,
+        "nse": -0.059307185452526445,
+        "median_catchment_nse": 0.25830181174515204,
+        "mean_catchment_nse": -3.391453650835946,
+        "catchments_scored": 1752,
+        "rows_scored": 280314,
+        "prediction": "persistence: streamflow(t)"
+      },
+      "model": {
+        "rmse": 2.740062836757349,
+        "mae": 0.6531753308897397,
+        "nse": 0.2773706038027094,
+        "median_catchment_nse": 0.3495949373656131,
+        "mean_catchment_nse": -4.845199314200737,
+        "catchments_scored": 1752,
+        "rows_scored": 280314,
+        "prediction": "CatBoost residual correction"
+      },
+      "by_source": {
+        "camels": {
+          "persistence": {
+            "rmse": 3.123604857996428,
+            "mae": 0.7525101229231682,
+            "nse": 0.08718546552791084,
+            "median_catchment_nse": 0.04383977160761121,
+            "mean_catchment_nse": -0.43308236306206255,
+            "catchments_scored": 119,
+            "rows_scored": 27166,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.412966619758983,
+            "mae": 0.6909253625210467,
+            "nse": 0.45528040844816386,
+            "median_catchment_nse": 0.32317417379913593,
+            "mean_catchment_nse": 0.29785124355327347,
+            "catchments_scored": 119,
+            "rows_scored": 27166,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsbr": {
+          "persistence": {
+            "rmse": 2.6129832733955825,
+            "mae": 0.5563281907262152,
+            "nse": -0.09157779759022433,
+            "median_catchment_nse": 0.48241127291641833,
+            "mean_catchment_nse": 0.3437002204867726,
+            "catchments_scored": 160,
+            "rows_scored": 39599,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.1905447011895203,
+            "mae": 0.557086868400203,
+            "nse": 0.23284048782444,
+            "median_catchment_nse": 0.5278245708727675,
+            "mean_catchment_nse": 0.29582183381651916,
+            "catchments_scored": 160,
+            "rows_scored": 39599,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelscl": {
+          "persistence": {
+            "rmse": 2.4623819763430816,
+            "mae": 0.5643713300488432,
+            "nse": 0.5851164126578235,
+            "median_catchment_nse": 0.6397936930926915,
+            "mean_catchment_nse": 0.5365104922157957,
+            "catchments_scored": 105,
+            "rows_scored": 18738,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.051102136739558,
+            "mae": 0.5798547585875544,
+            "nse": 0.7121342596461253,
+            "median_catchment_nse": 0.5174492577583891,
+            "mean_catchment_nse": -0.6086137068894141,
+            "catchments_scored": 105,
+            "rows_scored": 18738,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "hysets": {
+          "persistence": {
+            "rmse": 3.77827050637273,
+            "mae": 0.7301737173994088,
+            "nse": -0.2586297543695524,
+            "median_catchment_nse": 0.16873361936216014,
+            "mean_catchment_nse": -4.997766544565781,
+            "catchments_scored": 1207,
+            "rows_scored": 159051,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.1366448740391912,
+            "mae": 0.6782759781064388,
+            "nse": 0.13255369625944624,
+            "median_catchment_nse": 0.27805335212912274,
+            "mean_catchment_nse": -7.112732916045426,
+            "catchments_scored": 1207,
+            "rows_scored": 159051,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "lamah": {
+          "persistence": {
+            "rmse": 2.1517849482569966,
+            "mae": 0.6688422815477313,
+            "nse": 0.4067912552374674,
+            "median_catchment_nse": 0.4324698498091065,
+            "mean_catchment_nse": 0.11079555354239112,
+            "catchments_scored": 161,
+            "rows_scored": 35760,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.7755343365450142,
+            "mae": 0.6576800151783927,
+            "nse": 0.5961054762562229,
+            "median_catchment_nse": 0.4639144292791164,
+            "mean_catchment_nse": 0.36812304473470525,
+            "catchments_scored": 161,
+            "rows_scored": 35760,
+            "prediction": "CatBoost residual correction"
+          }
+        }
+      }
+    },
+    "5": {
+      "target": "streamflow(t+5)",
+      "train_rows": 588862,
+      "validation": 280104,
+      "baseline": {
+        "rmse": 3.555337435434945,
+        "mae": 0.805026704404904,
+        "nse": -0.14773066208801477,
+        "median_catchment_nse": 0.07547145693184876,
+        "mean_catchment_nse": -8.565234699738038,
+        "catchments_scored": 1752,
+        "rows_scored": 280104,
+        "prediction": "persistence: streamflow(t)"
+      },
+      "model": {
+        "rmse": 3.0248777041239117,
+        "mae": 0.7613085130672008,
+        "nse": 0.1692048083215547,
+        "median_catchment_nse": 0.21728960643209683,
+        "mean_catchment_nse": -4.05918815554189,
+        "catchments_scored": 1752,
+        "rows_scored": 280104,
+        "prediction": "CatBoost residual correction"
+      },
+      "by_source": {
+        "camels": {
+          "persistence": {
+            "rmse": 3.524277821286535,
+            "mae": 0.8890097202924333,
+            "nse": -0.08683129061734385,
+            "median_catchment_nse": -0.11061378479329886,
+            "mean_catchment_nse": -0.8154054142753776,
+            "catchments_scored": 119,
+            "rows_scored": 27164,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.7512452577761546,
+            "mae": 0.824559601850166,
+            "nse": 0.33766077757180346,
+            "median_catchment_nse": 0.19912043384033828,
+            "mean_catchment_nse": 0.19662304620753543,
+            "catchments_scored": 119,
+            "rows_scored": 27164,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsbr": {
+          "persistence": {
+            "rmse": 2.654146542251397,
+            "mae": 0.6563878011775085,
+            "nse": -0.22332859220033408,
+            "median_catchment_nse": 0.2809403819926852,
+            "mean_catchment_nse": 0.04780672497488595,
+            "catchments_scored": 160,
+            "rows_scored": 39577,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.138803711854744,
+            "mae": 0.6412488944727626,
+            "nse": 0.20560740123183652,
+            "median_catchment_nse": 0.381733270394194,
+            "mean_catchment_nse": 0.3125627648775952,
+            "catchments_scored": 160,
+            "rows_scored": 39577,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelscl": {
+          "persistence": {
+            "rmse": 3.421957454955705,
+            "mae": 0.7196947469654382,
+            "nse": 0.39554823135036676,
+            "median_catchment_nse": 0.4703347425898531,
+            "mean_catchment_nse": 0.3897125538323532,
+            "catchments_scored": 105,
+            "rows_scored": 18673,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.071371588161057,
+            "mae": 0.7369594321720341,
+            "nse": 0.513058077201804,
+            "median_catchment_nse": 0.37245858183716507,
+            "mean_catchment_nse": -0.8764129590990667,
+            "catchments_scored": 105,
+            "rows_scored": 18673,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "hysets": {
+          "persistence": {
+            "rmse": 3.984314997600793,
+            "mae": 0.8422143361454583,
+            "nse": -0.31849155237624704,
+            "median_catchment_nse": 0.019398998021905867,
+            "mean_catchment_nse": -12.404665519481437,
+            "catchments_scored": 1207,
+            "rows_scored": 158937,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.4463022378980863,
+            "mae": 0.7849128585153731,
+            "nse": 0.013546215388297367,
+            "median_catchment_nse": 0.15766843487346904,
+            "mean_catchment_nse": -5.9257366995561185,
+            "catchments_scored": 1207,
+            "rows_scored": 158937,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "lamah": {
+          "persistence": {
+            "rmse": 2.260528458428864,
+            "mae": 0.7850082512619639,
+            "nse": 0.2809196882949039,
+            "median_catchment_nse": 0.19228799806371788,
+            "mean_catchment_nse": -0.12391577114442966,
+            "catchments_scored": 161,
+            "rows_scored": 35753,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.7732184013689727,
+            "mae": 0.7539388793153735,
+            "nse": 0.5575319674190493,
+            "median_catchment_nse": 0.3187010507952641,
+            "mean_catchment_nse": 0.263868240900655,
+            "catchments_scored": 161,
+            "rows_scored": 35753,
+            "prediction": "CatBoost residual correction"
+          }
+        }
+      }
+    }
+  }
+}

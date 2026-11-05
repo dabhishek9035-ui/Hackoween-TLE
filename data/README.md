@@ -1,20 +1,21 @@
-# BASINSHIFT source data
+# Data sources
 
-This folder records the data sources named in the challenge document. The document is a proposal and does not freeze a benchmark release, geographic subset, variables, periods, or licensing decisions.
+The challenge document describes BASINSHIFT as a proposal. It does not choose an exact release, region, date range, resolution, or license for each optional source. Dataset selection and download status are recorded in [MANIFEST.csv](MANIFEST.csv).
 
-## Primary source
+## Primary data
 
-- **Caravan v1.6** — official Zenodo record: <https://zenodo.org/records/15529786>. Code bundle is saved in `Caravan/` and its MD5 matches Zenodo. The NetCDF transfer is running resumably into `Caravan-nc.tar.gz.partial`; do not extract/use until the expected 24,775,734,275 bytes arrive and the MD5 (`ad3a7767db059f218380e9cce5f72452`) matches. The CSV release is an alternative encoding, not additional unique data: <https://zenodo.org/records/15530021>.
-- Release details: forcing spans 1950–2023; v1.6 updates CAMELS-AUS. Inspect source dataset licenses and release notes before redistribution or competition use.
+**Caravan v1.6** is the selected primary source. The official release is available from [Zenodo record 15529786](https://zenodo.org/records/15529786). Its compressed NetCDF archive is 24,775,734,275 bytes with MD5 `ad3a7767db059f218380e9cce5f72452`; the expanded release is about 50.71 GB. The archive is kept under `data/Caravan/` and read member by member to avoid storing a second expanded copy. The downloaded code bundle is also stored there.
 
-## Additional sources named in the proposal
+The [CSV release](https://zenodo.org/records/15530021) is an alternate encoding of the same data, not an additional dataset. Caravan v1.6 includes forcing data through 2023 and updates CAMELS-AUS. Check source-specific licenses and attribution before redistribution or competition use.
 
-These are catalogs or product families, not single downloadable dataset files. No region, variable set, date range, resolution, or product version was specified, so this directory does not silently choose a potentially enormous or mismatched product.
+## Optional sources in the proposal
 
-- **GloFAS** — select historical reanalysis, forecast, or reforecast through the Copernicus Climate Data Store; account/API credentials and exact query are required: <https://cds.climate.copernicus.eu/datasets>.
-- **Copernicus Emergency Management Service** — select a flood event/mapping product and event area: <https://emergency.copernicus.eu/>
-- **WeatherBench 2** — public Google Cloud bucket `gs://weatherbench2/datasets`; choose dataset family, resolution, and period, and check the per-bucket license: <https://weatherbench2.readthedocs.io/en/latest/data-guide.html>.
-- **NASA POWER** — API requires point/area, parameters, temporal cadence, and date range: <https://power.larc.nasa.gov/docs/services/api/>.
-- **HydroShare** — repository of individual resources, not one dataset; choose resource IDs and check each resource's metadata/license: <https://www.hydroshare.org/>.
+These are product catalogs or resource repositories. No unrequested region, product, or time range is selected automatically.
 
-The challenge document also cautions that discharge, weather forcing, flood extent, and operational forecasts have different meanings and must not be mixed without an explicit task definition. See `MANIFEST.csv` for source status.
+- **GloFAS:** choose a historical reanalysis, forecast, or reforecast product through the [Copernicus Climate Data Store](https://cds.climate.copernicus.eu/datasets); account access and an exact query may be required.
+- **Copernicus Emergency Management Service:** choose a flood event or mapping product and event area at [Copernicus EMS](https://emergency.copernicus.eu/). Flood extent is not discharge.
+- **WeatherBench 2:** choose a dataset family, resolution, and period from the [data guide](https://weatherbench2.readthedocs.io/en/latest/data-guide.html); check the license for the chosen bucket.
+- **NASA POWER:** an API query needs locations, parameters, cadence, and dates; see the [API documentation](https://power.larc.nasa.gov/docs/services/api/).
+- **HydroShare:** select individual resources and inspect their metadata and licenses at [HydroShare](https://www.hydroshare.org/).
+
+Discharge observations, weather forcing, flood extent, and operational forecasts represent different quantities. Use them only with an explicit task definition and documented alignment.

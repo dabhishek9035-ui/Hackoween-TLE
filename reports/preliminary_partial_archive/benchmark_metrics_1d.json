@@ -1,0 +1,187 @@
+{
+  "task": "one-day-ahead streamflow in mm/day",
+  "forecast_origin": "end of day t; predictors only through day t",
+  "target": "streamflow(t+1)",
+  "archive": "Caravan-nc.tar.gz.partial",
+  "archive_bytes_at_run": 7947063296,
+  "archive_partial_at_run": true,
+  "expected_archive_bytes": 24775734275,
+  "split_manifest": "public_catchment_split.csv",
+  "split_note": "Organizer-proposed public catchment split; not an official challenge leaderboard.",
+  "train_basin_limit_per_source": 35,
+  "validation_basin_limit_per_source": 12,
+  "train_basins_used": 148,
+  "validation_basins_used": 54,
+  "features": [
+    "flow_lag_0",
+    "flow_lag_1",
+    "flow_lag_2",
+    "flow_lag_3",
+    "flow_lag_7",
+    "flow_lag_14",
+    "precip_lag_0",
+    "precip_lag_1",
+    "precip_lag_2",
+    "precip_lag_3",
+    "precip_lag_7",
+    "precip_lag_14",
+    "precip_sum_3d",
+    "precip_sum_7d",
+    "precip_sum_14d",
+    "potential_evaporation_sum_ERA5_LAND",
+    "potential_evaporation_sum_FAO_PENMAN_MONTEITH",
+    "temperature_2m_mean",
+    "dewpoint_temperature_2m_mean",
+    "snow_depth_water_equivalent_mean",
+    "surface_net_solar_radiation_mean",
+    "surface_net_thermal_radiation_mean",
+    "surface_pressure_mean",
+    "u_component_of_wind_10m_mean",
+    "v_component_of_wind_10m_mean",
+    "volumetric_soil_water_layer_1_mean",
+    "volumetric_soil_water_layer_2_mean",
+    "volumetric_soil_water_layer_3_mean",
+    "volumetric_soil_water_layer_4_mean",
+    "doy_sin",
+    "doy_cos",
+    "source"
+  ],
+  "catboost": {
+    "iterations": 500,
+    "depth": 8,
+    "learning_rate": 0.05,
+    "seed": 2026
+  },
+  "baseline": {
+    "rmse": 1.6324345404038818,
+    "mae": 0.3601802457505058,
+    "nse": 0.7611827806560897,
+    "median_catchment_nse": 0.8312895370786748,
+    "mean_catchment_nse": 0.7621331427050302,
+    "catchments_scored": 54,
+    "rows_scored": 175871,
+    "prediction": "persistence: streamflow(t)"
+  },
+  "model": {
+    "rmse": 1.4021670830993493,
+    "mae": 0.32248697648332514,
+    "nse": 0.8238049830977104,
+    "median_catchment_nse": 0.8350747411019063,
+    "mean_catchment_nse": 0.8076619546544654,
+    "catchments_scored": 54,
+    "rows_scored": 175871,
+    "prediction": "CatBoost residual correction"
+  },
+  "by_source": {
+    "camels": {
+      "persistence": {
+        "rmse": 1.9196265944272637,
+        "mae": 0.5396849477326418,
+        "nse": 0.4975857067680406,
+        "median_catchment_nse": 0.5374333429981659,
+        "mean_catchment_nse": 0.5537506647221049,
+        "catchments_scored": 12,
+        "rows_scored": 44691,
+        "prediction": "persistence"
+      },
+      "catboost": {
+        "rmse": 1.5226177438948938,
+        "mae": 0.43536266628352693,
+        "nse": 0.6839103734966661,
+        "median_catchment_nse": 0.7150515336466389,
+        "mean_catchment_nse": 0.7096098271874699,
+        "catchments_scored": 12,
+        "rows_scored": 44691,
+        "prediction": "CatBoost residual correction"
+      }
+    },
+    "camelsbr": {
+      "persistence": {
+        "rmse": 0.3379113887255097,
+        "mae": 0.1245660961179797,
+        "nse": 0.9779962011772232,
+        "median_catchment_nse": 0.9966544503078547,
+        "mean_catchment_nse": 0.9696112280309794,
+        "catchments_scored": 12,
+        "rows_scored": 46508,
+        "prediction": "persistence"
+      },
+      "catboost": {
+        "rmse": 0.3298330721587533,
+        "mae": 0.1381691079499223,
+        "nse": 0.9790356980074095,
+        "median_catchment_nse": 0.9940656833420609,
+        "mean_catchment_nse": 0.9704107119812706,
+        "catchments_scored": 12,
+        "rows_scored": 46508,
+        "prediction": "CatBoost residual correction"
+      }
+    },
+    "camelscl": {
+      "persistence": {
+        "rmse": 2.8420564990794164,
+        "mae": 0.5727094907147283,
+        "nse": 0.7692822806576423,
+        "median_catchment_nse": 0.8759660162882891,
+        "mean_catchment_nse": 0.8357055180499405,
+        "catchments_scored": 12,
+        "rows_scored": 29345,
+        "prediction": "persistence"
+      },
+      "catboost": {
+        "rmse": 2.565234693638757,
+        "mae": 0.5478178763652836,
+        "nse": 0.8120381351119298,
+        "median_catchment_nse": 0.9068639136966092,
+        "mean_catchment_nse": 0.8391367986856965,
+        "catchments_scored": 12,
+        "rows_scored": 29345,
+        "prediction": "CatBoost residual correction"
+      }
+    },
+    "hysets": {
+      "persistence": {
+        "rmse": 1.2541095991639177,
+        "mae": 0.4005010798095187,
+        "nse": 0.7353766705193273,
+        "median_catchment_nse": 0.7325355143971961,
+        "mean_catchment_nse": 0.7587759380040526,
+        "catchments_scored": 6,
+        "rows_scored": 8801,
+        "prediction": "persistence"
+      },
+      "catboost": {
+        "rmse": 1.0368750056894944,
+        "mae": 0.34082691539099597,
+        "nse": 0.8191119167448525,
+        "median_catchment_nse": 0.8350747411019063,
+        "mean_catchment_nse": 0.819374773705908,
+        "catchments_scored": 6,
+        "rows_scored": 8801,
+        "prediction": "CatBoost residual correction"
+      }
+    },
+    "lamah": {
+      "persistence": {
+        "rmse": 1.0136322408561733,
+        "mae": 0.28160404923237414,
+        "nse": 0.7466090985467049,
+        "median_catchment_nse": 0.7140154873871056,
+        "mean_catchment_nse": 0.6911437623675839,
+        "catchments_scored": 12,
+        "rows_scored": 46526,
+        "prediction": "persistence"
+      },
+      "catboost": {
+        "rmse": 0.8616247301035532,
+        "mae": 0.25271916746316875,
+        "nse": 0.8169092111458227,
+        "median_catchment_nse": 0.7499742484384135,
+        "mean_catchment_nse": 0.7056340712377027,
+        "catchments_scored": 12,
+        "rows_scored": 46526,
+        "prediction": "CatBoost residual correction"
+      }
+    }
+  }
+}

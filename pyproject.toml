@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "basinshift-caravan-forecast"
+version = "0.1.0"
+description = "Multi-horizon Caravan streamflow forecasting benchmark"
+requires-python = ">=3.12"
+dependencies = [
+  "catboost>=1.2,<2",
+  "netCDF4>=1.7,<2",
+  "numpy>=2.0,<3",
+  "pandas>=2.2,<4",
+  "scipy>=1.13,<2",
+]
+
+[project.optional-dependencies]
+dev = ["black>=26,<27"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]

@@ -1,0 +1,625 @@
+{
+  "task": "multi-horizon streamflow forecast in mm/day",
+  "forecast_origin": "end of day t; predictors only through day t",
+  "horizons_days": [
+    1,
+    3,
+    5
+  ],
+  "archive": "Caravan-nc.tar.gz",
+  "archive_bytes_at_run": 24775734275,
+  "archive_partial_at_run": false,
+  "expected_archive_bytes": 24775734275,
+  "split_manifest": "data\\Caravan\\manifests\\public_catchment_split.csv",
+  "split_note": "Organizer-proposed public catchment split; not an official challenge leaderboard.",
+  "train_catchments_used": 13036,
+  "validation_catchments_used": 3256,
+  "train_rows_by_source": {
+    "camels": 62837,
+    "camelsaus": 81445,
+    "camelsbr": 87861,
+    "camelscl": 33267,
+    "camelsgb": 63385,
+    "hysets": 663489,
+    "lamah": 75948
+  },
+  "validation_rows_by_source": {
+    "camels": 27174,
+    "camelsaus": 35284,
+    "camelsbr": 39668,
+    "camelscl": 18885,
+    "camelsgb": 37346,
+    "hysets": 332977,
+    "lamah": 35769
+  },
+  "row_sampling": "deterministic uniform sample across each catchment record",
+  "train_rows_per_catchment_cap": 250,
+  "validation_rows_per_catchment_cap": 500,
+  "features": [
+    "flow_lag_0",
+    "flow_lag_1",
+    "flow_lag_2",
+    "flow_lag_3",
+    "flow_lag_7",
+    "flow_lag_14",
+    "precip_lag_0",
+    "precip_lag_1",
+    "precip_lag_2",
+    "precip_lag_3",
+    "precip_lag_7",
+    "precip_lag_14",
+    "precip_sum_3d",
+    "precip_sum_7d",
+    "precip_sum_14d",
+    "potential_evaporation_sum_ERA5_LAND",
+    "potential_evaporation_sum_FAO_PENMAN_MONTEITH",
+    "temperature_2m_mean",
+    "dewpoint_temperature_2m_mean",
+    "snow_depth_water_equivalent_mean",
+    "surface_net_solar_radiation_mean",
+    "surface_net_thermal_radiation_mean",
+    "surface_pressure_mean",
+    "u_component_of_wind_10m_mean",
+    "v_component_of_wind_10m_mean",
+    "volumetric_soil_water_layer_1_mean",
+    "volumetric_soil_water_layer_2_mean",
+    "volumetric_soil_water_layer_3_mean",
+    "volumetric_soil_water_layer_4_mean",
+    "day_of_year_sin",
+    "day_of_year_cos",
+    "source"
+  ],
+  "model_config": {
+    "iterations": 500,
+    "depth": 8,
+    "learning_rate": 0.05,
+    "l2_leaf_reg": 5.0,
+    "thread_count": 4
+  },
+  "seed": 2026,
+  "horizons": {
+    "1": {
+      "target": "streamflow(t+1)",
+      "train_rows": 1067364,
+      "validation": 526666,
+      "baseline": {
+        "rmse": 3.0245364973827407,
+        "mae": 0.43395801123165456,
+        "nse": 0.2821798205412962,
+        "median_catchment_nse": 0.7112360356510699,
+        "mean_catchment_nse": -0.34144550751693004,
+        "catchments_scored": 3256,
+        "rows_scored": 526666,
+        "prediction": "persistence: streamflow(t)"
+      },
+      "model": {
+        "rmse": 2.677278766648359,
+        "mae": 0.40174866231550904,
+        "nse": 0.43754835499267575,
+        "median_catchment_nse": 0.7325126402438102,
+        "mean_catchment_nse": -3.8033848447404446,
+        "catchments_scored": 3256,
+        "rows_scored": 526666,
+        "prediction": "CatBoost residual correction"
+      },
+      "by_source": {
+        "camels": {
+          "persistence": {
+            "rmse": 2.503402848754627,
+            "mae": 0.4436124091261831,
+            "nse": 0.5680275332757123,
+            "median_catchment_nse": 0.5653764632960736,
+            "mean_catchment_nse": 0.4000716871337615,
+            "catchments_scored": 119,
+            "rows_scored": 27173,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.1220017029309513,
+            "mae": 0.38310568939243744,
+            "nse": 0.6896254960946886,
+            "median_catchment_nse": 0.7140486274494564,
+            "mean_catchment_nse": 0.605924415192809,
+            "catchments_scored": 119,
+            "rows_scored": 27173,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsaus": {
+          "persistence": {
+            "rmse": 3.6519146229161357,
+            "mae": 0.32266659164638667,
+            "nse": 0.10634705636123964,
+            "median_catchment_nse": 0.45285865541760395,
+            "mean_catchment_nse": 0.16038260549348501,
+            "catchments_scored": 101,
+            "rows_scored": 35266,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.1931598600477256,
+            "mae": 0.2859852903916202,
+            "nse": 0.3167667689871727,
+            "median_catchment_nse": 0.5895793163900782,
+            "mean_catchment_nse": -0.3896481412369308,
+            "catchments_scored": 101,
+            "rows_scored": 35266,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsbr": {
+          "persistence": {
+            "rmse": 1.7908357051357107,
+            "mae": 0.3081605314688806,
+            "nse": 0.4323952196175328,
+            "median_catchment_nse": 0.8239950128119754,
+            "mean_catchment_nse": 0.703812070264463,
+            "catchments_scored": 160,
+            "rows_scored": 39631,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.5227094334439546,
+            "mae": 0.32369950666297315,
+            "nse": 0.5896365883842927,
+            "median_catchment_nse": 0.7846596756688543,
+            "mean_catchment_nse": 0.6776730888169029,
+            "catchments_scored": 160,
+            "rows_scored": 39631,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelscl": {
+          "persistence": {
+            "rmse": 1.5713926772881708,
+            "mae": 0.2936969700424374,
+            "nse": 0.838917286599533,
+            "median_catchment_nse": 0.9054502152122572,
+            "mean_catchment_nse": 0.8445803064132303,
+            "catchments_scored": 105,
+            "rows_scored": 18810,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.2577148072596969,
+            "mae": 0.27430171450050017,
+            "nse": 0.8968085216046848,
+            "median_catchment_nse": 0.8777098118704234,
+            "mean_catchment_nse": -0.25866669819769855,
+            "catchments_scored": 105,
+            "rows_scored": 18810,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsgb": {
+          "persistence": {
+            "rmse": 2.499654532344989,
+            "mae": 0.7517642966287892,
+            "nse": 0.4189097644339336,
+            "median_catchment_nse": 0.566988279260151,
+            "mean_catchment_nse": 0.4642461715353307,
+            "catchments_scored": 152,
+            "rows_scored": 37335,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.1817845332974994,
+            "mae": 0.7400285116115028,
+            "nse": 0.5573022508154621,
+            "median_catchment_nse": 0.6007336636844839,
+            "mean_catchment_nse": 0.5306667847453873,
+            "catchments_scored": 152,
+            "rows_scored": 37335,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "hysets": {
+          "persistence": {
+            "rmse": 3.3340366737195875,
+            "mae": 0.438003348203834,
+            "nse": 0.18743189760293588,
+            "median_catchment_nse": 0.7126926140744678,
+            "mean_catchment_nse": -0.632962363737868,
+            "catchments_scored": 2458,
+            "rows_scored": 332687,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.9728686665048083,
+            "mae": 0.3982565239285766,
+            "nse": 0.35394354221375657,
+            "median_catchment_nse": 0.7286964513715473,
+            "mean_catchment_nse": -5.172177406329355,
+            "catchments_scored": 2458,
+            "rows_scored": 332687,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "lamah": {
+          "persistence": {
+            "rmse": 1.4220131713440167,
+            "mae": 0.38013644954359443,
+            "nse": 0.7379923614771202,
+            "median_catchment_nse": 0.7830473339864572,
+            "mean_catchment_nse": 0.649824490986648,
+            "catchments_scored": 161,
+            "rows_scored": 35764,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.222763822417325,
+            "mae": 0.3629289168630966,
+            "nse": 0.8062722312498672,
+            "median_catchment_nse": 0.8162620911706628,
+            "mean_catchment_nse": 0.7261933022220383,
+            "catchments_scored": 161,
+            "rows_scored": 35764,
+            "prediction": "CatBoost residual correction"
+          }
+        }
+      }
+    },
+    "3": {
+      "target": "streamflow(t+3)",
+      "train_rows": 1066286,
+      "validation": 526145,
+      "baseline": {
+        "rmse": 3.5423688844420678,
+        "mae": 0.7222931129246705,
+        "nse": -0.11122292517971877,
+        "median_catchment_nse": 0.2065891937836989,
+        "mean_catchment_nse": -5.503887526787181,
+        "catchments_scored": 3256,
+        "rows_scored": 526145,
+        "prediction": "persistence: streamflow(t)"
+      },
+      "model": {
+        "rmse": 2.9272357793935426,
+        "mae": 0.678745733686062,
+        "nse": 0.24119701021309492,
+        "median_catchment_nse": 0.31806150568343616,
+        "mean_catchment_nse": -19.650643892486126,
+        "catchments_scored": 3256,
+        "rows_scored": 526145,
+        "prediction": "CatBoost residual correction"
+      },
+      "by_source": {
+        "camels": {
+          "persistence": {
+            "rmse": 3.123604857996428,
+            "mae": 0.7525101229231682,
+            "nse": 0.08718546552791084,
+            "median_catchment_nse": 0.04383977160761121,
+            "mean_catchment_nse": -0.43308236306206255,
+            "catchments_scored": 119,
+            "rows_scored": 27166,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.4380353468245985,
+            "mae": 0.6809536831404498,
+            "nse": 0.44390324230804756,
+            "median_catchment_nse": 0.3200892810973559,
+            "mean_catchment_nse": 0.311203883811581,
+            "catchments_scored": 119,
+            "rows_scored": 27166,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsaus": {
+          "persistence": {
+            "rmse": 4.508717364324261,
+            "mae": 0.5134795694710279,
+            "nse": -0.387674719648031,
+            "median_catchment_nse": -0.08820403606076654,
+            "mean_catchment_nse": -1.203173777560165,
+            "catchments_scored": 101,
+            "rows_scored": 35240,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.95388959240129,
+            "mae": 0.4833324561898306,
+            "nse": -0.06716292554779324,
+            "median_catchment_nse": 0.19017761319398552,
+            "mean_catchment_nse": -0.07401476441928448,
+            "catchments_scored": 101,
+            "rows_scored": 35240,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsbr": {
+          "persistence": {
+            "rmse": 2.6129832733955825,
+            "mae": 0.5563281907262152,
+            "nse": -0.09157779759022433,
+            "median_catchment_nse": 0.48241127291641833,
+            "mean_catchment_nse": 0.3437002204867726,
+            "catchments_scored": 160,
+            "rows_scored": 39599,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.1818697578684745,
+            "mae": 0.566762578340878,
+            "nse": 0.23890463037915488,
+            "median_catchment_nse": 0.52376042013253,
+            "mean_catchment_nse": -0.014057641810807686,
+            "catchments_scored": 160,
+            "rows_scored": 39599,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelscl": {
+          "persistence": {
+            "rmse": 2.4623819763430816,
+            "mae": 0.5643713300488432,
+            "nse": 0.5851164126578235,
+            "median_catchment_nse": 0.6397936930926915,
+            "mean_catchment_nse": 0.5365104922157957,
+            "catchments_scored": 105,
+            "rows_scored": 18738,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.0550794465157187,
+            "mae": 0.5743935748945681,
+            "nse": 0.7110167713691748,
+            "median_catchment_nse": 0.5241619561629345,
+            "mean_catchment_nse": -0.2627591348423866,
+            "catchments_scored": 105,
+            "rows_scored": 18738,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsgb": {
+          "persistence": {
+            "rmse": 3.231971175617983,
+            "mae": 1.1185327220487293,
+            "nse": 0.06694503592923295,
+            "median_catchment_nse": 0.1386390073498323,
+            "mean_catchment_nse": 0.07410140660344981,
+            "catchments_scored": 152,
+            "rows_scored": 37314,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.6964452617548424,
+            "mae": 1.0781500171093434,
+            "nse": 0.350535395843775,
+            "median_catchment_nse": 0.2798783583576536,
+            "mean_catchment_nse": 0.18429922347845973,
+            "catchments_scored": 152,
+            "rows_scored": 37314,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "hysets": {
+          "persistence": {
+            "rmse": 3.753265313709333,
+            "mae": 0.7319071516290085,
+            "nse": -0.21081819648064593,
+            "median_catchment_nse": 0.1735583347256487,
+            "mean_catchment_nse": -7.292022074991774,
+            "catchments_scored": 2458,
+            "rows_scored": 332328,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.074894032917595,
+            "mae": 0.6743944220865759,
+            "nse": 0.18731785924427768,
+            "median_catchment_nse": 0.2998849987916591,
+            "mean_catchment_nse": -26.11601722909646,
+            "catchments_scored": 2458,
+            "rows_scored": 332328,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "lamah": {
+          "persistence": {
+            "rmse": 2.1517849482569966,
+            "mae": 0.6688422815477313,
+            "nse": 0.4067912552374674,
+            "median_catchment_nse": 0.4324698498091065,
+            "mean_catchment_nse": 0.11079555354239112,
+            "catchments_scored": 161,
+            "rows_scored": 35760,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.792406366459351,
+            "mae": 0.6720020455880709,
+            "nse": 0.5883929833295183,
+            "median_catchment_nse": 0.4354544819674685,
+            "mean_catchment_nse": 0.3331307289707414,
+            "catchments_scored": 161,
+            "rows_scored": 35760,
+            "prediction": "CatBoost residual correction"
+          }
+        }
+      }
+    },
+    "5": {
+      "target": "streamflow(t+5)",
+      "train_rows": 1065342,
+      "validation": 525735,
+      "baseline": {
+        "rmse": 3.774393447529831,
+        "mae": 0.8362815105904342,
+        "nse": -0.16007350178804214,
+        "median_catchment_nse": 0.024898576611426693,
+        "mean_catchment_nse": -5.622588913386839,
+        "catchments_scored": 3256,
+        "rows_scored": 525735,
+        "prediction": "persistence: streamflow(t)"
+      },
+      "model": {
+        "rmse": 3.152832447040859,
+        "mae": 0.7805259945390285,
+        "nse": 0.19054455203772325,
+        "median_catchment_nse": 0.19004407175385896,
+        "mean_catchment_nse": -4.434477704254621,
+        "catchments_scored": 3256,
+        "rows_scored": 525735,
+        "prediction": "CatBoost residual correction"
+      },
+      "by_source": {
+        "camels": {
+          "persistence": {
+            "rmse": 3.524277821286535,
+            "mae": 0.8890097202924333,
+            "nse": -0.08683129061734385,
+            "median_catchment_nse": -0.11061378479329886,
+            "mean_catchment_nse": -0.8154054142753776,
+            "catchments_scored": 119,
+            "rows_scored": 27164,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.7698996413550723,
+            "mae": 0.8024475556129937,
+            "nse": 0.3286485550240199,
+            "median_catchment_nse": 0.22233431890855082,
+            "mean_catchment_nse": 0.24055167724499574,
+            "catchments_scored": 119,
+            "rows_scored": 27164,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsaus": {
+          "persistence": {
+            "rmse": 4.956574441633629,
+            "mae": 0.5763659348592675,
+            "nse": -0.30980892680263605,
+            "median_catchment_nse": -0.12203373922399874,
+            "mean_catchment_nse": -2.916602622439416,
+            "catchments_scored": 101,
+            "rows_scored": 35214,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 4.485733130453206,
+            "mae": 0.545135616564304,
+            "nse": -0.07278216512717339,
+            "median_catchment_nse": 0.09484241557836481,
+            "mean_catchment_nse": -1.0117897243824374,
+            "catchments_scored": 101,
+            "rows_scored": 35214,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsbr": {
+          "persistence": {
+            "rmse": 2.654146542251397,
+            "mae": 0.6563878011775085,
+            "nse": -0.22332859220033408,
+            "median_catchment_nse": 0.2809403819926852,
+            "mean_catchment_nse": 0.04780672497488595,
+            "catchments_scored": 160,
+            "rows_scored": 39577,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.1250133931821518,
+            "mae": 0.6611782799272188,
+            "nse": 0.21581835243208214,
+            "median_catchment_nse": 0.3640561470249439,
+            "mean_catchment_nse": 0.23678238382810055,
+            "catchments_scored": 160,
+            "rows_scored": 39577,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelscl": {
+          "persistence": {
+            "rmse": 3.421957454955705,
+            "mae": 0.7196947469654382,
+            "nse": 0.39554823135036676,
+            "median_catchment_nse": 0.4703347425898531,
+            "mean_catchment_nse": 0.3897125538323532,
+            "catchments_scored": 105,
+            "rows_scored": 18673,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.1428535896517227,
+            "mae": 0.750310381752041,
+            "nse": 0.49012849551561233,
+            "median_catchment_nse": 0.33325251120386445,
+            "mean_catchment_nse": -2.503842676822336,
+            "catchments_scored": 105,
+            "rows_scored": 18673,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "camelsgb": {
+          "persistence": {
+            "rmse": 3.500451397477778,
+            "mae": 1.2896841053856767,
+            "nse": -0.05483268096229521,
+            "median_catchment_nse": -0.03911200824539762,
+            "mean_catchment_nse": -0.1007987731303805,
+            "catchments_scored": 152,
+            "rows_scored": 37291,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 2.8524391599960293,
+            "mae": 1.1879543383741824,
+            "nse": 0.29956433287885875,
+            "median_catchment_nse": 0.19315455160494666,
+            "mean_catchment_nse": 0.13382984416753943,
+            "catchments_scored": 152,
+            "rows_scored": 37291,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "hysets": {
+          "persistence": {
+            "rmse": 3.938176226292579,
+            "mae": 0.8421309206370774,
+            "nse": -0.23886106581955224,
+            "median_catchment_nse": 0.005470759582167084,
+            "mean_catchment_nse": -7.307786979504909,
+            "catchments_scored": 2458,
+            "rows_scored": 332063,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 3.2591917885356354,
+            "mae": 0.7733890170458326,
+            "nse": 0.1514994130596452,
+            "median_catchment_nse": 0.17057730583740677,
+            "mean_catchment_nse": -5.78405410917108,
+            "catchments_scored": 2458,
+            "rows_scored": 332063,
+            "prediction": "CatBoost residual correction"
+          }
+        },
+        "lamah": {
+          "persistence": {
+            "rmse": 2.260528458428864,
+            "mae": 0.7850082512619639,
+            "nse": 0.2809196882949039,
+            "median_catchment_nse": 0.19228799806371788,
+            "mean_catchment_nse": -0.12391577114442966,
+            "catchments_scored": 161,
+            "rows_scored": 35753,
+            "prediction": "persistence"
+          },
+          "model": {
+            "rmse": 1.7946512689053995,
+            "mae": 0.7849372582404847,
+            "nse": 0.5467711143393787,
+            "median_catchment_nse": 0.28285020740045175,
+            "mean_catchment_nse": 0.1850642428695404,
+            "catchments_scored": 161,
+            "rows_scored": 35753,
+            "prediction": "CatBoost residual correction"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "seed": 2026,
+  "horizons_days": [1, 3, 5],
+  "train_rows_per_catchment": 250,
+  "validation_rows_per_catchment": 500,
+  "model": {
+    "iterations": 500,
+    "depth": 8,
+    "learning_rate": 0.05,
+    "l2_leaf_reg": 5.0,
+    "thread_count": 4
+  }
+}
