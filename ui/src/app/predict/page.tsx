@@ -280,7 +280,7 @@ const DEFAULT_CATCHMENT = 'camels_01047000';
 
 export default function PredictPage() {
   const [catchmentId, setCatchmentId] = useState(DEFAULT_CATCHMENT);
-  const [horizon, setHorizon] = useState<Horizon>(7);
+  const [horizon, setHorizon] = useState<Horizon>(5);
   const [windowDays, setWindowDays] = useState(180);
   const [origin, setOrigin] = useState('');
   const [inputs, setInputs] = useState<ForecastInputs>({ antecedentRainMm: 90, forecastRainMm: 85, tempC: 24, gapDays: 0, quality: 'good' });
@@ -313,7 +313,7 @@ export default function PredictPage() {
 
     const nextCatchment = catchments.some((item) => item.id === requestedCatchment) ? requestedCatchment! : catchments[0].id;
     const chosen = catchments.find((item) => item.id === nextCatchment)!;
-    const nextH = HORIZONS.includes(requestedH as Horizon) ? (requestedH as Horizon) : 7;
+    const nextH = HORIZONS.includes(requestedH as Horizon) ? (requestedH as Horizon) : 5;
     const nextOrigin = clampDate(requestedOrigin ?? chosen.lastRecorded.date, shiftDate(chosen.lastRecorded.date, -364), chosen.lastRecorded.date);
 
     setCatchmentId(nextCatchment);
@@ -420,7 +420,7 @@ export default function PredictPage() {
   /* ── derived read-outs ── */
   const currentLevel = historyThroughOrigin.filter((p) => p.discharge !== null).at(-1)?.discharge ?? catchment?.lastRecorded.discharge ?? 0;
   const recentMean = useMemo(() => {
-    const window = historyThroughOrigin.filter((p) => p.discharge !== null).slice(-7).map((p) => p.discharge as number);
+    const window = historyThroughOrigin.filter((p) => p.discharge !== null).slice(-5).map((p) => p.discharge as number);
     return window.length ? window.reduce((s, v) => s + v, 0) / window.length : undefined;
   }, [historyThroughOrigin]);
   const trend = recentMean !== undefined && currentLevel ? currentLevel - recentMean : undefined;
@@ -515,7 +515,7 @@ export default function PredictPage() {
                   </div>
 
                   <div className="control">
-                    <div className="control-label"><span>Forecast horizon</span><strong>OFFICIAL SET · 1 · 3 · 7</strong></div>
+                    <div className="control-label"><span>Forecast horizon</span><strong>OFFICIAL SET · 1 · 3 · 5</strong></div>
                     <div className="segmented-control" role="group" aria-label="Forecast horizon">
                       {HORIZONS.map((item) => (
                         <button key={item} className={item === horizon ? 'selected' : ''} onClick={() => setHorizon(item)}>
@@ -546,7 +546,7 @@ export default function PredictPage() {
                 <div className="glass-card kpi">
                   <span className="data-label">Latest observed discharge</span>
                   <strong>{fmtQ(currentLevel)} <small>{catchment.unit}</small></strong>
-                  <span>{trend !== undefined ? <span className={trend > 0 ? 'up' : 'down'}>{trend > 0 ? '▲' : '▼'} {Math.abs(trend).toFixed(1)} {catchment.unit} vs 7-day mean</span> : 'vs 7-day mean'}</span>
+                  <span>{trend !== undefined ? <span className={trend > 0 ? 'up' : 'down'}>{trend > 0 ? '▲' : '▼'} {Math.abs(trend).toFixed(1)} {catchment.unit} vs 5-day mean</span> : 'vs 5-day mean'}</span>
                 </div>
                 <div className="glass-card kpi accent">
                   <span className="data-label">Predicted · {horizon}-day horizon</span>
@@ -601,8 +601,8 @@ export default function PredictPage() {
                         <span className="data-label"><Gauge /> HYDROLOGY HISTORY · AUTO</span>
                         <div className="auto-chips">
                           <span className="auto-chip"><span>Last observed</span><strong>{fmtQ(currentLevel)} {catchment.unit}</strong></span>
-                          <span className="auto-chip"><span>7-day mean</span><strong>{recentMean !== undefined ? fmtQ(recentMean) : '—'} {catchment.unit}</strong></span>
-                          <span className="auto-chip"><span>7-day trend</span><strong>{trend !== undefined ? `${trend > 0 ? '+' : ''}${trend.toFixed(1)}` : '—'} {catchment.unit}</strong></span>
+                          <span className="auto-chip"><span>5-day mean</span><strong>{recentMean !== undefined ? fmtQ(recentMean) : '—'} {catchment.unit}</strong></span>
+                          <span className="auto-chip"><span>5-day trend</span><strong>{trend !== undefined ? `${trend > 0 ? '+' : ''}${trend.toFixed(1)}` : '—'} {catchment.unit}</strong></span>
                           <span className="auto-chip"><span>Record quality</span><strong>{catchment.lastRecorded.quality.toUpperCase()}</strong></span>
                         </div>
                         <span className="data-label" style={{ marginTop: 6 }}><SlidersHorizontal /> MISSINGNESS METADATA</span>

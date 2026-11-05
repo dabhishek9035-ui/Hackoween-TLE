@@ -21,12 +21,12 @@ export default function MapPage() {
   const [focusId, setFocusId] = useState<string | null>(null);
   const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'watch' | 'low'>('all');
 
-  const sorted = [...board].sort((a, b) => RISK_ORDER[a.risk] - RISK_ORDER[b.risk] || b.pHigh7 - a.pHigh7);
+  const sorted = [...board].sort((a, b) => RISK_ORDER[a.risk] - RISK_ORDER[b.risk] || ((b.pHigh5 ?? b.pHigh7 ?? 0) - (a.pHigh5 ?? a.pHigh7 ?? 0)));
   const filtered = riskFilter === 'all' ? sorted : sorted.filter((entry) => entry.risk === riskFilter);
   const counts = { high: board.filter((e) => e.risk === 'high').length, watch: board.filter((e) => e.risk === 'watch').length, low: board.filter((e) => e.risk === 'low').length };
 
   return <section className="catalog-page">
-    <div className="catalog-top"><PageHeading label="THE RISK GLOBE" title={<>One Earth,<br/><span>every gauge.</span></>} description="The monitored catchments on a 3D Earth. Column height tracks how close each river runs to its extreme threshold; red, amber and green come from the CatBoost model’s 7-day odds of crossing the high-flow threshold." count={`${board.length || 16} gauged`} />
+    <div className="catalog-top"><PageHeading label="THE RISK GLOBE" title={<>One Earth,<br/><span>every gauge.</span></>} description="The monitored catchments on a 3D Earth. Column height tracks how close each river runs to its extreme threshold; red, amber and green come from the CatBoost model’s 5-day odds of crossing the high-flow threshold." count={`${board.length || 16} gauged`} />
       <div className="catalog-mark"><Globe2 size={16}/><span>TEXTURE © NASA BLUE MARBLE<br/>· DATA © CARAVAN BENCHMARK</span></div></div>
 
     <div className="map-toolbar">
@@ -57,7 +57,7 @@ export default function MapPage() {
       <CatchmentCard key={entry.catchment.id} catchment={entry.catchment} risk={entry.risk} index={index} focusId={(id) => { setFocusId(id); document.querySelector('.globe-viewport')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }} />
     ))}</div>}
 
-    <div className="catalog-foot"><span><i /> RISK = CATBOOST ML 7-DAY EXCEEDANCE BAND</span><span>SELECT A CATCHMENT TO RUN ITS FORECAST <b>↗</b></span></div>
+    <div className="catalog-foot"><span><i /> RISK = CATBOOST ML 5-DAY EXCEEDANCE BAND</span><span>SELECT A CATCHMENT TO RUN ITS FORECAST <b>↗</b></span></div>
 
     <div className="prediction-footnote" style={{ marginTop: 12 }}>
       <span><ShieldAlert size={14} /></span>

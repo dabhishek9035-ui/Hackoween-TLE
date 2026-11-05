@@ -41,20 +41,20 @@ def main():
         "catchmentId": sample_c["id"],
         "catchment": sample_c,
         "asOf": sample_c["lastRecorded"]["date"],
-        "horizon": 7,
+        "horizon": 5,
         "inputs": sample_c["defaultInputs"],
     }
     res = client.post("/api/forecast", json=payload)
     assert res.status_code == 200, f"Forecast failed: {res.text}"
     fc = res.json()
     print("   Forecast source:", fc["source"])
-    print("   Predicted discharge [1d, 3d, 7d]:", fc["output"]["predicted_discharge"])
+    print("   Predicted discharge [1d, 3d, 5d]:", fc["output"]["predicted_discharge"])
     print("   High-flow probabilities:", fc["pHigh"])
     print("   Risk level:", fc["risk"])
     print("   Series point count:", len(fc["series"]))
     assert fc["source"] == "catboost_caravan"
     assert len(fc["output"]["predicted_discharge"]) == 3
-    assert len(fc["series"]) == 7
+    assert len(fc["series"]) == 5
 
     print("\n5. Testing /api/risk-board...")
     res = client.get("/api/risk-board")

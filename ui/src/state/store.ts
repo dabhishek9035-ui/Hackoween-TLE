@@ -22,7 +22,7 @@ type AppState = {
 };
 
 export const useAppStore = create<AppState>((set) => ({
-  scene: 'underwater', selectedCatchment: 'camels_01047000', horizon: 7, scrollVelocity: 0, quality: 'high', tankFraction: 0.62, predictedFraction: 0.66, showPredicted: false,
+  scene: 'underwater', selectedCatchment: 'camels_01047000', horizon: 5, scrollVelocity: 0, quality: 'high', tankFraction: 0.62, predictedFraction: 0.66, showPredicted: false,
   setScene: (scene) => set({ scene }), setSelectedCatchment: (selectedCatchment) => set({ selectedCatchment }),
   setHorizon: (horizon) => set({ horizon }), setScrollVelocity: (scrollVelocity) => set({ scrollVelocity }),
   setQuality: (quality) => set({ quality }),

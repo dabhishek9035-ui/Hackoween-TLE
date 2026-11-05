@@ -25,9 +25,12 @@ type GlobePoint = {
   color: string;
   altitude: number;
   current: number | null;
-  predicted7: number;
-  pHigh7: number;
-  pExt7: number;
+  predicted5: number;
+  pHigh5: number;
+  pExt5: number;
+  predicted7?: number;
+  pHigh7?: number;
+  pExt7?: number;
   thresholdHigh: number;
   unit: string;
 };
@@ -36,14 +39,17 @@ function pointLabel(d: object) {
   const p = d as GlobePoint;
   const meta = RISK_META[p.risk];
   const current = p.current !== null ? `${fmtQ(p.current)} ${p.unit}` : 'no reading';
+  const pred = p.predicted5 ?? p.predicted7 ?? 0;
+  const ph = p.pHigh5 ?? p.pHigh7 ?? 0;
+  const pe = p.pExt5 ?? p.pExt7 ?? 0;
   return `
     <div style="min-width:190px">
       <span class="pop-code">${p.code} · ${p.river.toUpperCase()}</span><br/>
       <b>${p.name}</b><br/>
       <span style="color:${meta.color}">● ${meta.label}</span><br/>
       Latest ${current}<br/>
-      7-day predicted ${fmtQ(p.predicted7)} ${p.unit}<br/>
-      P(high flow) ${fmtP(p.pHigh7)} · P(extreme) ${fmtP(p.pExt7)}<br/>
+      5-day predicted ${fmtQ(pred)} ${p.unit}<br/>
+      P(high flow) ${fmtP(ph)} · P(extreme) ${fmtP(pe)}<br/>
       <span style="color:#69d6e0;font-weight:600">Click to open forecast ↗</span>
     </div>`;
 }
@@ -94,9 +100,12 @@ export default function RiskGlobe({ board, focusId, debugMode = 0 }: { board: Ri
           // column height encodes the same "share of extreme threshold" the DOM shows
           altitude: 0.012 + fill * 0.05,
           current: entry.current,
-          predicted7: entry.predicted7,
-          pHigh7: entry.pHigh7,
-          pExt7: entry.pExt7,
+          predicted5: entry.predicted5 ?? entry.predicted7 ?? 0,
+          pHigh5: entry.pHigh5 ?? entry.pHigh7 ?? 0,
+          pExt5: entry.pExt5 ?? entry.pExt7 ?? 0,
+          predicted7: entry.predicted7 ?? entry.predicted5 ?? 0,
+          pHigh7: entry.pHigh7 ?? entry.pHigh5 ?? 0,
+          pExt7: entry.pExt7 ?? entry.pExt5 ?? 0,
           thresholdHigh: entry.catchment.thresholdHigh,
           unit: entry.catchment.unit,
         };

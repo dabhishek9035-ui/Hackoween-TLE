@@ -130,17 +130,16 @@ export async function fetchCustomForecast(
     const q1 = Math.max(0, q0 + res1);
     const q3 = Math.max(0, q0 + res3);
     const q5 = Math.max(0, q0 + res5);
-    const q7 = Math.max(0, q0 + res7);
 
-    const horizons = [1, 3, 5, 7];
-    const runoff = [q1, q3, q5, q7].map((v) => Math.round(v * 100) / 100);
-    const discharges = [q1 * mmToM3s, q3 * mmToM3s, q5 * mmToM3s, q7 * mmToM3s].map((v) => Math.round(v * 10) / 10);
-    const residuals = [res1, res3, res5, res7].map((v) => Math.round(v * 100) / 100);
+    const horizons = [1, 3, 5];
+    const runoff = [q1, q3, q5].map((v) => Math.round(v * 100) / 100);
+    const discharges = [q1 * mmToM3s, q3 * mmToM3s, q5 * mmToM3s].map((v) => Math.round(v * 10) / 10);
+    const residuals = [res1, res3, res5].map((v) => Math.round(v * 100) / 100);
 
     const baseDate = inputs.originDate || new Date().toISOString().slice(0, 10);
     const baseDt = new Date(baseDate);
 
-    const series = [1, 2, 3, 4, 5, 6, 7].map((d) => {
+    const series = [1, 2, 3, 4, 5].map((d) => {
       const target = new Date(baseDt);
       target.setDate(target.getDate() + d);
       const val = discharges[Math.min(discharges.length - 1, Math.floor((d - 1) / 2))];
@@ -157,7 +156,7 @@ export async function fetchCustomForecast(
     const pHigh = discharges.map((q) => Math.min(0.99, Math.max(0.01, Math.round((q / tHigh) * 0.5 * 100) / 100)));
     const pExt = discharges.map((q) => Math.min(0.98, Math.max(0.01, Math.round((q / tExt) * 0.3 * 100) / 100)));
 
-    const risk = pHigh[3] >= 0.55 || discharges[3] >= tHigh ? 'high' : pHigh[3] >= 0.25 ? 'watch' : 'low';
+    const risk = pHigh[2] >= 0.55 || discharges[2] >= tHigh ? 'high' : pHigh[2] >= 0.25 ? 'watch' : 'low';
 
     return {
       basinName: inputs.basinName || 'Custom River Basin',

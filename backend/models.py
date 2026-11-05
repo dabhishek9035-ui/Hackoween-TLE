@@ -93,9 +93,12 @@ class RiskBoardEntry(BaseModel):
     catchment: Catchment
     risk: RiskLevel
     current: float | None = None
-    predicted7: float
-    pHigh7: float
-    pExt7: float
+    predicted5: float = 0.0
+    pHigh5: float = 0.0
+    pExt5: float = 0.0
+    predicted7: float = 0.0
+    pHigh7: float = 0.0
+    pExt7: float = 0.0
 
 
 class ForecastRequest(BaseModel):
@@ -103,7 +106,7 @@ class ForecastRequest(BaseModel):
     catchment: Catchment | None = None
     as_of: str
     inputs: ForecastInputs
-    horizon: int = 7
+    horizon: int = 5
 
 
 class CustomModelInputs(BaseModel):

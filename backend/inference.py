@@ -44,12 +44,13 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_DIR = PROJECT_ROOT / "models"
 
 # Forecast horizons supported
-HORIZONS = [1, 3, 7]
+HORIZONS = [1, 3, 5]
 
 
 class CatBoostForecastEngine:
     def __init__(self) -> None:
         self.models: dict[int, CatBoostRegressor] = {}
+        self.feature_names: list[str] = []
         self.load_models()
 
     def load_models(self) -> None:
@@ -61,6 +62,8 @@ class CatBoostForecastEngine:
                     model = CatBoostRegressor()
                     model.load_model(str(path))
                     self.models[h] = model
+                    if not self.feature_names and hasattr(model, "feature_names_") and model.feature_names_:
+                        self.feature_names = list(model.feature_names_)
                     print(f"Loaded CatBoost model for {h}-day horizon from {path}")
                 except Exception as e:
                     print(f"Warning: Failed to load model for {h}-day horizon: {e}")
@@ -130,7 +133,7 @@ class CatBoostForecastEngine:
         # Source catchment group
         source = catchment.source if catchment.source else "camels"
 
-        features = {
+        features: dict[str, Any] = {
             **flow_lags,
             **precip_lags,
             "potential_evaporation_sum_ERA5_LAND": pet,
@@ -149,8 +152,22 @@ class CatBoostForecastEngine:
             "volumetric_soil_water_layer_4_mean": min(0.45, 0.27 + ant_rain * 0.0005),
             "day_of_year_sin": doy_sin,
             "day_of_year_cos": doy_cos,
+            "day_of_year": float(doy),
+            "static_other_area": area,
+            "static_other_gauge_lat": float(catchment.lat),
+            "static_other_gauge_lon": float(catchment.lng),
+            "static_hydroatlas_ele_mt_sav": float(catchment.elevMeanM),
+            "static_hydroatlas_ele_mt_smn": max(0.0, float(catchment.elevMeanM) - 50.0),
+            "static_hydroatlas_ele_mt_smx": float(catchment.elevMeanM) + 100.0,
             "source": source,
         }
+
+        # Ensure all model features exist
+        if self.feature_names:
+            for col in self.feature_names:
+                if col not in features:
+                    features[col] = 0.0 if col != "source" else source
+            return pd.DataFrame([features])[self.feature_names]
 
         return pd.DataFrame([features])
 
@@ -208,17 +225,13 @@ class CatBoostForecastEngine:
             pred_m3s += rain_total_m3s * rain_fraction * 0.25
             predicted_q_by_h[h] = max(0.0, pred_m3s)
 
-        # Compute 7-day horizon: sequence progression from h=3 and h=5 with recession
+        # Compute multi-horizon forecasts [1, 3, 5]
         q1 = predicted_q_by_h.get(1, q0_m3s)
         q3 = predicted_q_by_h.get(3, q0_m3s)
         q5 = predicted_q_by_h.get(5, q3)
-        # Momentum decay to horizon 7
-        trend_53 = (q5 - q3) * 0.5
-        q7 = max(0.0, q5 + trend_53 * 0.8)
-        predicted_q_by_h[7] = q7
 
-        # Horizons requested by the frontend contract [1, 3, 7]
-        target_horizons = [1, 3, 7]
+        # Horizons requested by the frontend contract [1, 3, 5]
+        target_horizons = [1, 3, 5]
 
         pred_discharges: list[float] = []
         p_high_list: list[float] = []
@@ -257,11 +270,14 @@ class CatBoostForecastEngine:
             p_high_dict[str(h)] = p_h
             p_ext_dict[str(h)] = p_e
 
-        # Daily trajectory (days 1..7) for smooth charting
+        # Backwards compatibility alias for older 7-day keys
+        p_high_dict["7"] = p_high_dict.get("5", p_high_list[-1])
+        p_ext_dict["7"] = p_ext_dict.get("5", p_ext_list[-1])
+
+        # Daily trajectory (days 1..5) for smooth charting
         series: list[ForecastPoint] = []
-        for d in range(1, 8):
+        for d in range(1, 6):
             dt = as_of_dt + timedelta(days=d)
-            # Interpolate daily discharge using spline / anchor points
             if d == 1:
                 qd = predicted_q_by_h[1]
             elif d == 2:
@@ -270,12 +286,8 @@ class CatBoostForecastEngine:
                 qd = predicted_q_by_h[3]
             elif d == 4:
                 qd = (predicted_q_by_h[3] + predicted_q_by_h[5]) * 0.5
-            elif d == 5:
-                qd = predicted_q_by_h[5]
-            elif d == 6:
-                qd = (predicted_q_by_h[5] + predicted_q_by_h[7]) * 0.5
             else:
-                qd = predicted_q_by_h[7]
+                qd = predicted_q_by_h[5]
 
             day_band = base_sigma * math.sqrt(1.0 + d / 3.0)
             d_low = max(0.0, round(qd - 1.28 * day_band, 1))
@@ -289,12 +301,12 @@ class CatBoostForecastEngine:
                 )
             )
 
-        # Risk classification based on 7-day outlook
-        p7_high = p_high_dict.get("7", p_high_list[-1])
-        q7_val = pred_discharges[-1]
-        if p7_high >= 0.55 or q7_val >= t_high:
+        # Risk classification based on 5-day outlook
+        p5_high = p_high_dict.get("5", p_high_list[-1])
+        q5_val = pred_discharges[-1]
+        if p5_high >= 0.55 or q5_val >= t_high:
             risk: RiskLevel = "high"
-        elif p7_high >= 0.25:
+        elif p5_high >= 0.25:
             risk = "watch"
         else:
             risk = "low"
@@ -362,8 +374,20 @@ class CatBoostForecastEngine:
 
         # Extract features dictionary
         inputs_dict = inputs.model_dump()
-        features_dict = {k: inputs_dict.get(k) for k in feature_keys}
-        features_df = pd.DataFrame([features_dict])
+        features_dict: dict[str, Any] = {k: inputs_dict.get(k) for k in feature_keys}
+        features_dict["day_of_year"] = float(inputs_dict.get("day_of_year", 180.0))
+        features_dict["static_other_area"] = float(inputs.area_km2)
+        features_dict["static_other_gauge_lat"] = 45.0
+        features_dict["static_other_gauge_lon"] = -70.0
+        features_dict["static_hydroatlas_ele_mt_sav"] = 400.0
+
+        if self.feature_names:
+            for col in self.feature_names:
+                if col not in features_dict:
+                    features_dict[col] = 0.0 if col != "source" else features_dict.get("source", "camels")
+            features_df = pd.DataFrame([features_dict])[self.feature_names]
+        else:
+            features_df = pd.DataFrame([features_dict])
 
         q0_mm = float(inputs.flow_lag_0)
         area = max(1.0, float(inputs.areaSqKm))
@@ -377,20 +401,14 @@ class CatBoostForecastEngine:
         q1_mm = max(0.0, q0_mm + res_1)
         q3_mm = max(0.0, q0_mm + res_3)
         q5_mm = max(0.0, q0_mm + res_5)
-        # 7-day trend extrapolation
-        trend_53 = (q5_mm - q3_mm) * 0.4
-        q7_mm = max(0.0, q5_mm + trend_53)
-        res_7 = q7_mm - q0_mm
-
-        horizons = [1, 3, 5, 7]
-        predicted_runoff_mm = [round(q1_mm, 2), round(q3_mm, 2), round(q5_mm, 2), round(q7_mm, 2)]
-        residuals_mm = [round(res_1, 2), round(res_3, 2), round(res_5, 2), round(res_7, 2)]
+        horizons = [1, 3, 5]
+        predicted_runoff_mm = [round(q1_mm, 2), round(q3_mm, 2), round(q5_mm, 2)]
+        residuals_mm = [round(res_1, 2), round(res_3, 2), round(res_5, 2)]
 
         predicted_discharge_m3s = [
             round(q1_mm * mm_to_m3s, 1),
             round(q3_mm * mm_to_m3s, 1),
             round(q5_mm * mm_to_m3s, 1),
-            round(q7_mm * mm_to_m3s, 1),
         ]
 
         t_high = float(inputs.thresholdHigh)
@@ -426,7 +444,7 @@ class CatBoostForecastEngine:
         else:
             risk = "low"
 
-        # 7-day daily series path for plotting
+        # 5-day daily series path for plotting
         origin_str = inputs.originDate or date.today().strftime("%Y-%m-%d")
         try:
             origin_dt = datetime.strptime(origin_str, "%Y-%m-%d").date()
@@ -434,7 +452,7 @@ class CatBoostForecastEngine:
             origin_dt = date.today()
 
         series: list[ForecastPoint] = []
-        for d in range(1, 8):
+        for d in range(1, 6):
             dt = origin_dt + timedelta(days=d)
             if d == 1:
                 qd_m3s = predicted_discharge_m3s[0]
@@ -444,12 +462,8 @@ class CatBoostForecastEngine:
                 qd_m3s = predicted_discharge_m3s[1]
             elif d == 4:
                 qd_m3s = (predicted_discharge_m3s[1] + predicted_discharge_m3s[2]) * 0.5
-            elif d == 5:
-                qd_m3s = predicted_discharge_m3s[2]
-            elif d == 6:
-                qd_m3s = (predicted_discharge_m3s[2] + predicted_discharge_m3s[3]) * 0.5
             else:
-                qd_m3s = predicted_discharge_m3s[3]
+                qd_m3s = predicted_discharge_m3s[2]
 
             band = base_sigma_m3s * math.sqrt(1.0 + d / 2.8)
             series.append(

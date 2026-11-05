@@ -33,7 +33,7 @@ python train.py
 
 Start the FastAPI inference backend:
 ```powershell
-python backend/run_server.py
+python run_backend.py
 ```
 
 In a separate terminal, launch the Next.js UI:

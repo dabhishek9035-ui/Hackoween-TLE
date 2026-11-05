@@ -125,7 +125,7 @@ def run_forecast_endpoint(payload: dict[str, Any] = Body(...)) -> ForecastResult
             raise HTTPException(status_code=404, detail=f"Catchment '{cid}' not found")
 
     as_of = payload.get("asOf") or payload.get("as_of") or date.today().strftime("%Y-%m-%d")
-    horizon = int(payload.get("horizon", 7))
+    horizon = int(payload.get("horizon", 5))
 
     raw_inputs = payload.get("inputs") or {}
     inputs = ForecastInputs(**raw_inputs) if isinstance(raw_inputs, dict) else catchment.defaultInputs
@@ -152,16 +152,22 @@ def get_risk_board() -> list[RiskBoardEntry]:
     for c in manager.list_catchments():
         history = manager.generate_history(c.id, today_str, 30)
         flows = [p.discharge for p in history if p.discharge is not None]
-        result = engine.predict(c, today_str, c.defaultInputs, 7, flows)
+        result = engine.predict(c, today_str, c.defaultInputs, 5, flows)
+        pred_val = result.output.predicted_discharge[-1]
+        p_h = result.pHigh.get("5", result.pHigh.get("7", 0.0))
+        p_e = result.pExt.get("5", result.pExt.get("7", 0.0))
 
         board.append(
             RiskBoardEntry(
                 catchment=c,
                 risk=result.risk,
                 current=c.lastRecorded.discharge,
-                predicted7=result.output.predicted_discharge[-1],
-                pHigh7=result.pHigh.get("7", 0.0),
-                pExt7=result.pExt.get("7", 0.0),
+                predicted5=pred_val,
+                pHigh5=p_h,
+                pExt5=p_e,
+                predicted7=pred_val,
+                pHigh7=p_h,
+                pExt7=p_e,
             )
         )
 

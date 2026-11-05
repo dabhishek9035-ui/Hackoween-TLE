@@ -683,8 +683,7 @@ export default function CustomForecastLabPage() {
 
             {/* Horizons Grid */}
             <div className="output-hero" style={{ marginTop: 12 }}>
-              {[0, 1, 2, 3].map((i) => {
-                const h = result?.horizons[i] ?? [1, 3, 5, 7][i];
+              {(result?.horizons ?? [1, 3, 5]).map((h, i) => {
                 const q = result?.predictedDischargeM3s[i];
                 const runoff = result?.predictedRunoffMm[i];
                 const res = result?.residualsMm[i];
@@ -706,7 +705,7 @@ export default function CustomForecastLabPage() {
           <div className="chart-card">
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
               <span style={{ font: '600 11px var(--mono)', color: '#88a6ad', textTransform: 'uppercase' }}>
-                7-Day Projected Hydrograph (m³/s)
+                5-Day Projected Hydrograph (m³/s)
               </span>
               <span style={{ font: '9px var(--mono)', color: '#688c94' }}>
                 Shaded band = 80% confidence interval
@@ -764,9 +763,8 @@ export default function CustomForecastLabPage() {
               </h3>
               <span>STATISTICAL PROBABILITY</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              {[0, 1, 2, 3].map((i) => {
-                const h = result?.horizons[i] ?? [1, 3, 5, 7][i];
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {(result?.horizons ?? [1, 3, 5]).map((h, i) => {
                 const pH = result?.highFlowProbability[i] ?? 0;
                 const pE = result?.extremeFlowProbability[i] ?? 0;
                 return (

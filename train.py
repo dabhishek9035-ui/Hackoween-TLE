@@ -1,12 +1,15 @@
-"""Train and benchmark 1-, 3-, and 5-day Caravan streamflow forecasts."""
+"""Train and benchmark multi-horizon Caravan streamflow forecasts."""
 
 from __future__ import annotations
 
+import argparse
 import csv
 import hashlib
 import json
 import re
 import sys
+import threading
+import time
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -35,8 +38,15 @@ PRECIPITATION_LAGS = (0, 1, 2, 3, 7, 14)
 PRECIPITATION_WINDOWS = (3, 7, 14)
 MIN_CATCHMENT_METRIC_ROWS = 30
 EVENT_QUANTILE = 0.90
+EXTREME_EVENT_QUANTILE = 0.99
 EVENT_CLASSIFIER_ITERATIONS = 400
 EVENT_CLASSIFIER_DEPTH = 6
+UNCERTAINTY_ITERATIONS = 400
+UNCERTAINTY_DEPTH = 6
+THREE_DAY_HIGH_FLOW_WEIGHT = 2.0
+UNCERTAINTY_INTERVAL_LEVELS = (0.80, 0.90)
+CRPS_MONTE_CARLO_SAMPLES = 32
+STRESS_SAMPLE_ROWS = 100_000
 CARAVAN_STATIC_FEATURES = (
     "aridity_ERA5_LAND",
     "frac_snow",
@@ -82,10 +92,13 @@ METEOROLOGY_FEATURES = (
 )
 
 
-def load_config() -> dict:
+def load_config(horizons_override: list[int] | None = None) -> dict:
     with CONFIG_PATH.open(encoding="utf-8") as handle:
         config = json.load(handle)
-    config["horizons_days"] = sorted({int(value) for value in config["horizons_days"]})
+    configured_horizons = (
+        config["horizons_days"] if horizons_override is None else horizons_override
+    )
+    config["horizons_days"] = sorted({int(value) for value in configured_horizons})
     if not config["horizons_days"] or config["horizons_days"][0] <= 0:
         raise ValueError("Forecast horizons must be positive day counts")
     return config
@@ -543,17 +556,34 @@ def predict_source_climatology(
     return np.maximum(prediction, 0.0)
 
 
-def source_event_thresholds(train_frame: pd.DataFrame) -> dict[str, float]:
+def source_event_thresholds(
+    train_frame: pd.DataFrame, quantile: float = EVENT_QUANTILE
+) -> dict[str, float]:
     groups = train_frame.groupby(["source", "gauge_id"], observed=True)["target"]
     counts = groups.size()
     eligible = counts[counts >= MIN_CATCHMENT_METRIC_ROWS].index
-    per_catchment = groups.quantile(EVENT_QUANTILE).loc[eligible]
+    per_catchment = groups.quantile(quantile).loc[eligible]
     per_source = per_catchment.groupby(level="source", observed=True).median()
     thresholds = {str(source): float(value) for source, value in per_source.items()}
     for source in train_frame["source"].unique():
         if source not in thresholds:
             source_values = train_frame.loc[train_frame["source"] == source, "target"]
-            thresholds[str(source)] = float(source_values.quantile(EVENT_QUANTILE))
+            thresholds[str(source)] = float(source_values.quantile(quantile))
+    return thresholds
+
+
+def aggregate_full_series_thresholds(
+    catchment_quantiles: dict[str, list[float]],
+    train_frame: pd.DataFrame,
+    quantile: float,
+) -> dict[str, float]:
+    fallback = source_event_thresholds(train_frame, quantile)
+    thresholds = {}
+    for source in train_frame["source"].unique():
+        values = catchment_quantiles.get(str(source), [])
+        thresholds[str(source)] = (
+            float(np.median(values)) if values else fallback[str(source)]
+        )
     return thresholds
 
 
@@ -564,6 +594,34 @@ def equal_catchment_weights(frame: pd.DataFrame) -> np.ndarray:
         .to_numpy(dtype=np.float64)
     )
     weights = 1.0 / np.maximum(counts, 1.0)
+    weights *= weights.size / np.sum(weights)
+    return weights.astype(np.float32)
+
+
+def regression_weights(
+    frame: pd.DataFrame, event_targets: np.ndarray, horizon: int
+) -> np.ndarray:
+    weights = equal_catchment_weights(frame).astype(np.float64)
+    if horizon != 3:
+        return weights.astype(np.float32)
+
+    events = np.asarray(event_targets, dtype=bool)
+    boost = np.where(events, THREE_DAY_HIGH_FLOW_WEIGHT, 1.0)
+    catchment_event_rate = (
+        pd.DataFrame(
+            {
+                "source": frame["source"].to_numpy(),
+                "gauge_id": frame["gauge_id"].to_numpy(),
+                "event": events.astype(np.float32),
+            }
+        )
+        .groupby(["source", "gauge_id"], observed=True)["event"]
+        .transform("mean")
+    )
+    basin_normalizer = (
+        1.0 + (THREE_DAY_HIGH_FLOW_WEIGHT - 1.0) * catchment_event_rate.to_numpy()
+    )
+    weights *= boost / basin_normalizer
     weights *= weights.size / np.sum(weights)
     return weights.astype(np.float32)
 
@@ -683,6 +741,279 @@ def probability_metrics(
     }
 
 
+def _interval_summary(
+    frame: pd.DataFrame,
+    observed: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    nominal_coverage: float,
+) -> dict:
+    covered = (observed >= lower) & (observed <= upper)
+    widths = upper - lower
+    basin_frame = pd.DataFrame(
+        {
+            "source": frame["source"].to_numpy(),
+            "gauge_id": frame["gauge_id"].to_numpy(),
+            "covered": covered.astype(np.float32),
+            "width": widths.astype(np.float32),
+        }
+    )
+    by_basin = basin_frame.groupby(["source", "gauge_id"], observed=True).agg(
+        rows=("covered", "size"), coverage=("covered", "mean"), width=("width", "mean")
+    )
+    eligible = by_basin.loc[by_basin["rows"] >= MIN_CATCHMENT_METRIC_ROWS]
+    return {
+        "nominal_coverage": float(nominal_coverage),
+        "pooled_coverage": float(np.mean(covered)),
+        "mean_width_mm_day": float(np.mean(widths)),
+        "median_catchment_coverage": (
+            float(eligible["coverage"].median()) if not eligible.empty else None
+        ),
+        "median_catchment_width_mm_day": (
+            float(eligible["width"].median()) if not eligible.empty else None
+        ),
+        "catchments_scored": int(len(eligible)),
+        "rows_scored": int(observed.size),
+    }
+
+
+def predictive_distribution_metrics(
+    frame: pd.DataFrame,
+    observed: np.ndarray,
+    origin_flow: np.ndarray,
+    mean_residual: np.ndarray,
+    std_residual: np.ndarray,
+    seed: int,
+) -> dict:
+    """Score a Gaussian in asinh-residual space after mapping it to flow units."""
+    z_scores = {0.80: 1.2815515655446004, 0.90: 1.6448536269514722}
+    base = np.arcsinh(np.maximum(origin_flow, 0.0)).astype(np.float64)
+    mean_residual = np.asarray(mean_residual, dtype=np.float64)
+    std_residual = np.maximum(np.asarray(std_residual, dtype=np.float64), 1e-6)
+    intervals = {}
+    for coverage, z_score in z_scores.items():
+        lower = np.sinh(np.clip(base + mean_residual - z_score * std_residual, -20, 20))
+        upper = np.sinh(np.clip(base + mean_residual + z_score * std_residual, -20, 20))
+        intervals[f"{int(coverage * 100)}%"] = _interval_summary(
+            frame, observed, np.maximum(lower, 0.0), np.maximum(upper, 0.0), coverage
+        )
+
+    rng = np.random.default_rng(seed)
+    sample_count = CRPS_MONTE_CARLO_SAMPLES
+    pair_coefficients = 2 * np.arange(sample_count, dtype=np.float64) - sample_count + 1
+    crps = np.empty(observed.size, dtype=np.float32)
+    chunk_size = 8192
+    for start in range(0, observed.size, chunk_size):
+        stop = min(start + chunk_size, observed.size)
+        normal_draws = rng.standard_normal((stop - start, sample_count))
+        residual_draws = (
+            mean_residual[start:stop, None]
+            + std_residual[start:stop, None] * normal_draws
+        )
+        flow_draws = np.sinh(np.clip(base[start:stop, None] + residual_draws, -20, 20))
+        flow_draws = np.maximum(flow_draws, 0.0)
+        absolute_error = np.mean(
+            np.abs(flow_draws - observed[start:stop, None]), axis=1
+        )
+        ordered_draws = np.sort(flow_draws, axis=1)
+        pair_term = np.sum(ordered_draws * pair_coefficients, axis=1) / (
+            sample_count * sample_count
+        )
+        crps[start:stop] = np.maximum(absolute_error - pair_term, 0.0).astype(
+            np.float32
+        )
+
+    crps_frame = pd.DataFrame(
+        {
+            "source": frame["source"].to_numpy(),
+            "gauge_id": frame["gauge_id"].to_numpy(),
+            "rows": np.ones(observed.size, dtype=np.int8),
+            "crps": crps,
+        }
+    )
+    by_basin = crps_frame.groupby(["source", "gauge_id"], observed=True).agg(
+        rows=("rows", "sum"), crps=("crps", "mean")
+    )
+    eligible = by_basin.loc[by_basin["rows"] >= MIN_CATCHMENT_METRIC_ROWS]
+    mean_crps = float(np.mean(crps))
+    persistence_crps = float(np.mean(np.abs(observed - origin_flow)))
+    return {
+        "predictive_distribution": (
+            "Gaussian CatBoost RMSEWithUncertainty on asinh flow residuals; "
+            "transformed back to nonnegative mm/day flow"
+        ),
+        "intervals": intervals,
+        "crps_mm_day": mean_crps,
+        "crps_skill_vs_persistence": (
+            float(1.0 - mean_crps / persistence_crps) if persistence_crps > 0 else None
+        ),
+        "persistence_crps_mm_day": persistence_crps,
+        "median_catchment_crps_mm_day": (
+            float(eligible["crps"].median()) if not eligible.empty else None
+        ),
+        "crps_method": (
+            f"Empirical ensemble CRPS with {sample_count} deterministic-seed "
+            "Monte Carlo draws per validation row"
+        ),
+        "catchments_scored": int(len(eligible)),
+        "rows_scored": int(observed.size),
+    }
+
+
+def pooled_regression_metrics(observed: np.ndarray, prediction: np.ndarray) -> dict:
+    observed = np.asarray(observed, dtype=np.float64)
+    prediction = np.asarray(prediction, dtype=np.float64)
+    residual = prediction - observed
+    denominator = float(np.sum((observed - np.mean(observed)) ** 2))
+    return {
+        "rmse": float(np.sqrt(np.mean(residual**2))),
+        "mae": float(np.mean(np.abs(residual))),
+        "nse": (
+            float(1.0 - np.sum(residual**2) / denominator) if denominator > 0 else None
+        ),
+        "rows_scored": int(observed.size),
+    }
+
+
+def stress_test_metrics(
+    model,
+    features: pd.DataFrame,
+    observed: np.ndarray,
+    clean_prediction: np.ndarray,
+    seed: int,
+) -> dict:
+    """Run deterministic missing-input and forcing-noise checks on a fixed sample."""
+    sample_count = min(STRESS_SAMPLE_ROWS, len(features))
+    indices = np.linspace(0, len(features) - 1, sample_count, dtype=np.int64)
+    sample_features = features.iloc[indices].copy()
+    sample_observed = np.asarray(observed)[indices]
+    clean_scores = pooled_regression_metrics(
+        sample_observed, np.asarray(clean_prediction)[indices]
+    )
+    dynamic_columns = [
+        name
+        for name in sample_features.columns
+        if name.startswith(("flow_lag_", "precip_lag_", "precip_sum_"))
+        or name in METEOROLOGY_FEATURES
+    ]
+    if not dynamic_columns:
+        return {"sample_rows": sample_count, "dynamic_features": [], "scenarios": {}}
+
+    rng = np.random.default_rng(seed)
+    scenarios = {}
+
+    missing_features = sample_features.copy()
+    values = missing_features[dynamic_columns].to_numpy(dtype=np.float32, copy=True)
+    missing_mask = rng.random(values.shape) < 0.10
+    values[missing_mask] = np.nan
+    missing_features.loc[:, dynamic_columns] = values
+    missing_prediction = model.predict(missing_features)
+    scenarios["10_percent_dynamic_inputs_missing"] = pooled_regression_metrics(
+        sample_observed, missing_prediction
+    )
+
+    noisy_features = sample_features.copy()
+    values = noisy_features[dynamic_columns].to_numpy(dtype=np.float32, copy=True)
+    scales = np.nanstd(values, axis=0).astype(np.float32)
+    scales = np.where(np.isfinite(scales), scales, 0.0)
+    noise = rng.normal(0.0, 0.10 * scales, size=values.shape).astype(np.float32)
+    finite_mask = np.isfinite(values)
+    values[finite_mask] += noise[finite_mask]
+    noisy_features.loc[:, dynamic_columns] = values
+    noisy_prediction = model.predict(noisy_features)
+    scenarios["10_percent_feature_standard_deviation_noise"] = (
+        pooled_regression_metrics(sample_observed, noisy_prediction)
+    )
+
+    delay_columns = [
+        name
+        for name in dynamic_columns
+        if name in {"flow_lag_0", "precip_lag_0"} or name in METEOROLOGY_FEATURES
+    ]
+    delayed_features = sample_features.copy()
+    if delay_columns:
+        delayed_features.loc[:, delay_columns] = np.nan
+        delay_prediction = model.predict(delayed_features)
+        scenarios["one_day_reporting_delay"] = pooled_regression_metrics(
+            sample_observed, delay_prediction
+        )
+
+    gap_columns = [
+        name
+        for name in dynamic_columns
+        if name
+        in {
+            "flow_lag_0",
+            "flow_lag_1",
+            "flow_lag_2",
+            "precip_lag_0",
+            "precip_lag_1",
+            "precip_lag_2",
+            "precip_sum_3d",
+        }
+    ]
+    gap_features = sample_features.copy()
+    if gap_columns:
+        gap_features.loc[:, gap_columns] = np.nan
+        gap_prediction = model.predict(gap_features)
+        scenarios["three_day_contiguous_input_gap"] = pooled_regression_metrics(
+            sample_observed, gap_prediction
+        )
+    for result in scenarios.values():
+        result["rmse_relative_degradation"] = (
+            float(result["rmse"] / clean_scores["rmse"] - 1.0)
+            if clean_scores["rmse"] > 0
+            else None
+        )
+    return {
+        "sample_rows": sample_count,
+        "dynamic_features": dynamic_columns,
+        "clean_reference": clean_scores,
+        "scenarios": scenarios,
+        "seed": int(seed),
+    }
+
+
+class ProcessResourceMonitor:
+    def __init__(self) -> None:
+        try:
+            import psutil
+
+            self._process = psutil.Process()
+        except ImportError:
+            self._process = None
+        self._stop = threading.Event()
+        self.peak_rss_bytes = 0
+        self._thread = None
+
+    def _sample(self) -> None:
+        if self._process is None:
+            return
+        try:
+            self.peak_rss_bytes = max(
+                self.peak_rss_bytes, int(self._process.memory_info().rss)
+            )
+        except Exception:
+            return
+
+    def _run(self) -> None:
+        while not self._stop.wait(1.0):
+            self._sample()
+
+    def start(self) -> None:
+        self._sample()
+        if self._process is None:
+            return
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._sample()
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+
+
 def compare_by_source(
     frame: pd.DataFrame,
     predictions: dict[str, np.ndarray],
@@ -726,8 +1057,37 @@ def merge_catchment_scores(
     return merged
 
 
-def main() -> None:
-    config = load_config()
+def main(argv: list[str] | None = None) -> None:
+    run_started = time.perf_counter()
+    resource_monitor = ProcessResourceMonitor()
+    resource_monitor.start()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--horizons",
+        nargs="+",
+        type=int,
+        help="Optional subset of forecast horizons to run, such as --horizons 3.",
+    )
+    parser.add_argument(
+        "--run-name",
+        default="",
+        help="Optional safe suffix for model and report artifacts from an experiment.",
+    )
+    parser.add_argument(
+        "--task-type",
+        choices=("CPU", "GPU"),
+        default="CPU",
+        help="CatBoost training device; GPU uses CUDA device 0.",
+    )
+    args = parser.parse_args(argv)
+    if args.run_name and re.fullmatch(r"[A-Za-z0-9_-]+", args.run_name) is None:
+        raise SystemExit("--run-name may contain only letters, digits, '_' and '-'.")
+
+    config = load_config(args.horizons)
+    catboost_compute = {"task_type": args.task_type}
+    if args.task_type == "GPU":
+        catboost_compute["devices"] = "0"
+    artifact_suffix = f"_{args.run_name}" if args.run_name else ""
     horizons = tuple(config["horizons_days"])
     max_horizon = max(horizons)
     archive = FINAL_ARCHIVE if FINAL_ARCHIVE.exists() else PARTIAL_ARCHIVE
@@ -776,6 +1136,10 @@ def main() -> None:
     validation_gauges: list[str] = []
     found_train: set[tuple[str, str]] = set()
     found_validation: set[tuple[str, str]] = set()
+    full_series_threshold_samples = {
+        horizon: {quantile: {} for quantile in (EVENT_QUANTILE, EXTREME_EVENT_QUANTILE)}
+        for horizon in horizons
+    }
     processed_catchments = 0
 
     for source, gauge_id, dataset in iter_netcdf(
@@ -801,6 +1165,18 @@ def main() -> None:
             else config["validation_rows_per_catchment"]
         )
         valid_origin = np.isfinite(flow[:usable_count]) & (flow[:usable_count] >= 0)
+        if partition == "train":
+            for horizon in horizons:
+                target_series = targets[horizon][:usable_count]
+                valid_targets = target_series[
+                    valid_origin & np.isfinite(target_series) & (target_series >= 0)
+                ]
+                if valid_targets.size >= MIN_CATCHMENT_METRIC_ROWS:
+                    per_source = full_series_threshold_samples[horizon]
+                    for quantile in (EVENT_QUANTILE, EXTREME_EVENT_QUANTILE):
+                        per_source[quantile].setdefault(source, []).append(
+                            float(np.quantile(valid_targets, quantile))
+                        )
         candidates = np.flatnonzero(valid_origin)
         indices = sample_rows(
             source,
@@ -862,6 +1238,7 @@ def main() -> None:
     date_axis_catchments_validated = processed_catchments
 
     for horizon in horizons:
+        horizon_started = time.perf_counter()
         y_train = np.concatenate(train_targets[horizon]).astype(np.float32)
         y_validation = np.concatenate(validation_targets[horizon]).astype(np.float32)
         doy_train = np.concatenate(train_target_days[horizon]).astype(np.int16)
@@ -895,7 +1272,20 @@ def main() -> None:
                 "target_day_of_year": doy_validation[validation_mask],
             }
         )
-        train_weights = equal_catchment_weights(train_frame)
+        thresholds = aggregate_full_series_thresholds(
+            full_series_threshold_samples[horizon][EVENT_QUANTILE],
+            train_frame,
+            EVENT_QUANTILE,
+        )
+        extreme_thresholds = aggregate_full_series_thresholds(
+            full_series_threshold_samples[horizon][EXTREME_EVENT_QUANTILE],
+            train_frame,
+            EXTREME_EVENT_QUANTILE,
+        )
+        train_event_labels = event_labels(train_frame, thresholds)
+        train_extreme_labels = event_labels(train_frame, extreme_thresholds)
+        base_train_weights = equal_catchment_weights(train_frame)
+        train_weights = regression_weights(train_frame, train_event_labels, horizon)
 
         print(
             f"Training {horizon}-day model on {len(target_train):,} rows; "
@@ -912,18 +1302,60 @@ def main() -> None:
             thread_count=int(model_config["thread_count"]),
             verbose=100,
             allow_writing_files=False,
+            **catboost_compute,
         )
+        transformed_target_train = np.arcsinh(target_train) - np.arcsinh(flow_train)
+        model_fit_started = time.perf_counter()
         model.fit(
             X_train_horizon,
-            np.arcsinh(target_train) - np.arcsinh(flow_train),
+            transformed_target_train,
             cat_features=["source"],
             sample_weight=train_weights,
         )
+        model_fit_seconds = time.perf_counter() - model_fit_started
+        inference_started = time.perf_counter()
         transformed_prediction = np.arcsinh(flow_validation) + model.predict(
             X_validation_horizon
         )
         prediction = np.sinh(np.clip(transformed_prediction, -20.0, 20.0))
         prediction = np.maximum(0.0, prediction)
+        point_inference_seconds = time.perf_counter() - inference_started
+
+        uncertainty_model = CatBoostRegressor(
+            loss_function="RMSEWithUncertainty",
+            iterations=UNCERTAINTY_ITERATIONS,
+            depth=UNCERTAINTY_DEPTH,
+            learning_rate=float(model_config["learning_rate"]),
+            l2_leaf_reg=float(model_config["l2_leaf_reg"]),
+            random_seed=int(config["seed"]) + horizon,
+            thread_count=int(model_config["thread_count"]),
+            verbose=100,
+            allow_writing_files=False,
+            **catboost_compute,
+        )
+        uncertainty_fit_started = time.perf_counter()
+        uncertainty_model.fit(
+            X_train_horizon,
+            transformed_target_train,
+            cat_features=["source"],
+            sample_weight=train_weights,
+        )
+        uncertainty_fit_seconds = time.perf_counter() - uncertainty_fit_started
+        uncertainty_inference_started = time.perf_counter()
+        uncertainty_parameters = uncertainty_model.predict(
+            X_validation_horizon, prediction_type="RMSEWithUncertainty"
+        )
+        uncertainty_inference_seconds = (
+            time.perf_counter() - uncertainty_inference_started
+        )
+        uncertainty_metrics = predictive_distribution_metrics(
+            validation_frame,
+            target_validation,
+            flow_validation,
+            uncertainty_parameters[:, 0],
+            uncertainty_parameters[:, 1],
+            seed=int(config["seed"]) + horizon,
+        )
         climatology = fit_source_climatology(train_frame)
         climatology_prediction = predict_source_climatology(
             validation_frame, climatology
@@ -940,8 +1372,7 @@ def main() -> None:
                 "persistence": "persistence: streamflow(t)",
                 "climatology": "source-level day-of-year climatology",
                 "model": (
-                    "equal-catchment-weighted asinh residual CatBoost "
-                    "with static attributes"
+                    "catchment-weighted asinh residual CatBoost with static attributes"
                 ),
             }[name]
             point_metrics[name], point_rows[name] = aggregate_metrics(
@@ -950,9 +1381,8 @@ def main() -> None:
         source_metrics = compare_by_source(validation_frame, point_predictions)
         catchment_results.extend(merge_catchment_scores(horizon, point_rows))
 
-        thresholds = source_event_thresholds(train_frame)
-        train_event_labels = event_labels(train_frame, thresholds)
         validation_event_labels = event_labels(validation_frame, thresholds)
+        validation_extreme_labels = event_labels(validation_frame, extreme_thresholds)
         event_train_frame = pd.DataFrame(
             {"source": train_frame["source"], "event": train_event_labels}
         )
@@ -974,7 +1404,12 @@ def main() -> None:
                 "Source-specific high-flow event: target exceeds the median "
                 "per-training-catchment 90th percentile; thresholds use training data only."
             ),
+            "training_quantile": EVENT_QUANTILE,
             "threshold_by_source_mm_day": thresholds,
+            "threshold_estimation": (
+                "Median of per-training-catchment quantiles computed from all "
+                "valid training forecast origins before row sampling/capping."
+            ),
             "training_event_rate_by_source": training_event_rates,
             "persistence_point_forecast": contingency_metrics(
                 validation_event_labels,
@@ -989,6 +1424,7 @@ def main() -> None:
 
         event_classifier = None
         classifier_probabilities = None
+        classifier_fit_seconds = 0.0
         if np.unique(train_event_labels).size == 2:
             event_classifier = CatBoostClassifier(
                 loss_function="Logloss",
@@ -1002,6 +1438,7 @@ def main() -> None:
                 thread_count=int(model_config["thread_count"]),
                 verbose=100,
                 allow_writing_files=False,
+                **catboost_compute,
             )
             print(
                 f"Training {horizon}-day event classifier on "
@@ -1009,12 +1446,14 @@ def main() -> None:
                 f"training prevalence={np.mean(train_event_labels):.3f}",
                 flush=True,
             )
+            classifier_fit_started = time.perf_counter()
             event_classifier.fit(
                 X_train_horizon,
                 train_event_labels,
                 cat_features=["source"],
-                sample_weight=train_weights,
+                sample_weight=base_train_weights,
             )
+            classifier_fit_seconds = time.perf_counter() - classifier_fit_started
             probability_columns = list(event_classifier.classes_)
             positive_column = probability_columns.index(1)
             classifier_probabilities = event_classifier.predict_proba(
@@ -1028,11 +1467,104 @@ def main() -> None:
             event_metrics["classifier_at_probability_0_5"] = contingency_metrics(
                 validation_event_labels, classifier_probabilities >= 0.5
             )
-            event_model_path = MODEL_DIR / f"caravan_highflow_h{horizon}d.cbm"
+            event_model_path = MODEL_DIR / (
+                f"caravan_highflow_h{horizon}d{artifact_suffix}.cbm"
+            )
             event_classifier.save_model(str(event_model_path))
         else:
             event_metrics["classifier_probability"] = None
             event_metrics["classifier_at_probability_0_5"] = None
+
+        extreme_train_frame = pd.DataFrame(
+            {"source": train_frame["source"], "event": train_extreme_labels}
+        )
+        extreme_training_rates = {
+            str(source): float(rate)
+            for source, rate in extreme_train_frame.groupby("source", observed=True)[
+                "event"
+            ]
+            .mean()
+            .items()
+        }
+        extreme_reference_probabilities = (
+            validation_frame["source"]
+            .map(extreme_training_rates)
+            .to_numpy(dtype=np.float64)
+        )
+        validation_extreme_limits = (
+            validation_frame["source"].map(extreme_thresholds).to_numpy()
+        )
+        extreme_metrics: dict[str, dict] = {
+            "definition": (
+                "Separate extreme-high-flow event: target exceeds the median "
+                "per-training-catchment 99th percentile; thresholds use training data only."
+            ),
+            "training_quantile": EXTREME_EVENT_QUANTILE,
+            "threshold_by_source_mm_day": extreme_thresholds,
+            "threshold_estimation": (
+                "Median of per-training-catchment quantiles computed from all "
+                "valid training forecast origins before row sampling/capping."
+            ),
+            "training_event_rate_by_source": extreme_training_rates,
+            "persistence_point_forecast": contingency_metrics(
+                validation_extreme_labels,
+                flow_validation > validation_extreme_limits,
+            ),
+            "regression_point_forecast": contingency_metrics(
+                validation_extreme_labels,
+                prediction > validation_extreme_limits,
+            ),
+            "classifier_probability": None,
+            "classifier_at_probability_0_5": None,
+        }
+        extreme_classifier = None
+        extreme_classifier_fit_seconds = 0.0
+        if np.unique(train_extreme_labels).size == 2:
+            extreme_classifier = CatBoostClassifier(
+                loss_function="Logloss",
+                iterations=min(
+                    EVENT_CLASSIFIER_ITERATIONS, int(model_config["iterations"])
+                ),
+                depth=EVENT_CLASSIFIER_DEPTH,
+                learning_rate=float(model_config["learning_rate"]),
+                l2_leaf_reg=float(model_config["l2_leaf_reg"]),
+                random_seed=int(config["seed"]) + 1000 + horizon,
+                thread_count=int(model_config["thread_count"]),
+                verbose=100,
+                allow_writing_files=False,
+                **catboost_compute,
+            )
+            print(
+                f"Training {horizon}-day extreme-flow classifier on "
+                f"{len(train_extreme_labels):,} rows; "
+                f"training prevalence={np.mean(train_extreme_labels):.4f}",
+                flush=True,
+            )
+            extreme_fit_started = time.perf_counter()
+            extreme_classifier.fit(
+                X_train_horizon,
+                train_extreme_labels,
+                cat_features=["source"],
+                sample_weight=base_train_weights,
+            )
+            extreme_classifier_fit_seconds = time.perf_counter() - extreme_fit_started
+            extreme_probability_columns = list(extreme_classifier.classes_)
+            extreme_positive_column = extreme_probability_columns.index(1)
+            extreme_probabilities = extreme_classifier.predict_proba(
+                X_validation_horizon
+            )[:, extreme_positive_column]
+            extreme_metrics["classifier_probability"] = probability_metrics(
+                validation_extreme_labels,
+                extreme_probabilities,
+                extreme_reference_probabilities,
+            )
+            extreme_metrics["classifier_at_probability_0_5"] = contingency_metrics(
+                validation_extreme_labels, extreme_probabilities >= 0.5
+            )
+            extreme_model_path = MODEL_DIR / (
+                f"caravan_extremeflow_h{horizon}d{artifact_suffix}.cbm"
+            )
+            extreme_classifier.save_model(str(extreme_model_path))
 
         validation_limits = validation_frame["source"].map(thresholds).to_numpy()
         validation_reference = np.asarray(reference_probabilities)
@@ -1058,6 +1590,18 @@ def main() -> None:
                 )
             event_metrics["by_source"][source] = source_result
 
+        stress_metrics = stress_test_metrics(
+            model,
+            X_validation_horizon,
+            target_validation,
+            prediction,
+            seed=int(config["seed"]) + 10_000 + horizon,
+        )
+        uncertainty_model_path = MODEL_DIR / (
+            f"caravan_uncertainty_h{horizon}d{artifact_suffix}.cbm"
+        )
+        uncertainty_model.save_model(str(uncertainty_model_path))
+
         horizon_results[str(horizon)] = {
             "target": f"streamflow(t+{horizon})",
             "train_rows": int(target_train.size),
@@ -1068,13 +1612,59 @@ def main() -> None:
                 "source_doy_climatology": point_metrics["climatology"],
             },
             "model": point_metrics["model"],
+            "uncertainty_and_intervals": uncertainty_metrics,
+            "extreme_flow_and_probabilities": extreme_metrics,
+            "stress_test": stress_metrics,
+            "regression_training_weights": (
+                {
+                    "method": "equal catchment total weight",
+                    "high_flow_multiplier": THREE_DAY_HIGH_FLOW_WEIGHT,
+                    "applied_to_horizon_days": 3,
+                }
+                if horizon == 3
+                else {"method": "equal catchment total weight"}
+            ),
             "by_source": source_metrics,
             "events_and_probabilities": event_metrics,
+            "runtime": {
+                "regression_fit_seconds": float(model_fit_seconds),
+                "highflow_classifier_fit_seconds": float(classifier_fit_seconds),
+                "extremeflow_classifier_fit_seconds": float(
+                    extreme_classifier_fit_seconds
+                ),
+                "uncertainty_fit_seconds": float(uncertainty_fit_seconds),
+                "point_prediction_seconds": float(point_inference_seconds),
+                "uncertainty_prediction_seconds": float(uncertainty_inference_seconds),
+                "horizon_total_seconds": float(time.perf_counter() - horizon_started),
+            },
         }
 
-        model_path = MODEL_DIR / f"caravan_streamflow_h{horizon}d.cbm"
+        model_path = MODEL_DIR / (
+            f"caravan_streamflow_h{horizon}d{artifact_suffix}.cbm"
+        )
         model.save_model(str(model_path))
+        event_artifact = MODEL_DIR / (
+            f"caravan_highflow_h{horizon}d{artifact_suffix}.cbm"
+        )
+        horizon_results[str(horizon)]["model_artifact_bytes"] = int(
+            model_path.stat().st_size
+        )
+        horizon_results[str(horizon)]["highflow_artifact_bytes"] = (
+            int(event_artifact.stat().st_size) if event_artifact.exists() else None
+        )
+        horizon_results[str(horizon)]["uncertainty_artifact_bytes"] = int(
+            uncertainty_model_path.stat().st_size
+        )
+        extreme_artifact = MODEL_DIR / (
+            f"caravan_extremeflow_h{horizon}d{artifact_suffix}.cbm"
+        )
+        horizon_results[str(horizon)]["extremeflow_artifact_bytes"] = (
+            int(extreme_artifact.stat().st_size) if extreme_artifact.exists() else None
+        )
         del model
+        del uncertainty_model
+        if extreme_classifier is not None:
+            del extreme_classifier
         print(
             f"{horizon}-day RMSE: "
             f"persistence {point_metrics['persistence']['rmse']:.4f}; "
@@ -1094,11 +1684,19 @@ def main() -> None:
                 flush=True,
             )
 
-    pd.DataFrame(catchment_results).to_csv(
-        REPORT_DIR / "per_catchment_metrics.csv", index=False
-    )
+    per_catchment_path = REPORT_DIR / (f"per_catchment_metrics{artifact_suffix}.csv")
+    pd.DataFrame(catchment_results).to_csv(per_catchment_path, index=False)
     train_counts = Counter(train_sources)
     validation_counts = Counter(validation_sources)
+    resource_monitor.stop()
+    total_runtime_seconds = time.perf_counter() - run_started
+    model_artifact_bytes = sum(
+        value.get("model_artifact_bytes", 0)
+        + (value.get("highflow_artifact_bytes") or 0)
+        + value.get("uncertainty_artifact_bytes", 0)
+        + (value.get("extremeflow_artifact_bytes") or 0)
+        for value in horizon_results.values()
+    )
     metrics = {
         "task": "multi-horizon streamflow forecast in mm/day",
         "forecast_origin": "end of day t; predictors only through day t",
@@ -1111,6 +1709,21 @@ def main() -> None:
         "split_note": (
             "Organizer-proposed public catchment split; "
             "not an official challenge leaderboard."
+        ),
+        "evaluation_protocol": {
+            "partition_role": "public validation",
+            "catchment_disjoint_from_training": not bool(overlap),
+            "official_hidden_test_b": False,
+            "temporal_test_a": False,
+            "stress_test_c": "local reproducible input corruption checks only",
+            "note": (
+                "Validation catchments are absent from model training, but this is "
+                "not the organizer's hidden Test B or a chronological Test A."
+            ),
+        },
+        "horizon_status": (
+            "Exploratory only. The attached challenge documentation calls 1, 3, "
+            "and 7 days provisional and says the official horizon set is not frozen."
         ),
         "train_catchments_used": len(found_train),
         "validation_catchments_used": len(found_validation),
@@ -1131,8 +1744,14 @@ def main() -> None:
             "asinh(streamflow(t+h)) - asinh(streamflow(t)); inverse transform at inference"
         ),
         "training_row_weighting": (
-            "Each catchment has equal total weight within each horizon, independent "
-            "of how many valid rows it contributes."
+            "Each catchment has equal total regression weight within each horizon; "
+            "for 3-day regression, training-only high-flow rows receive a fixed "
+            "2x multiplier, renormalized so each catchment keeps equal total weight. "
+            "Event classifiers retain unboosted equal-catchment weights."
+        ),
+        "experiment_note": (
+            "Use --horizons 3 --run-name h3-event-weighted to fit only the "
+            "3-day event-weighted experiment and write separate artifacts."
         ),
         "train_rows_by_source": dict(sorted(train_counts.items())),
         "validation_rows_by_source": dict(sorted(validation_counts.items())),
@@ -1156,6 +1775,30 @@ def main() -> None:
             "depth": EVENT_CLASSIFIER_DEPTH,
             "probability_threshold_for_event_metrics": 0.5,
         },
+        "extreme_event_config": {
+            "training_quantile": EXTREME_EVENT_QUANTILE,
+            "threshold_estimation": (
+                "Median per-training-catchment quantile from complete valid "
+                "training forecast origins, aggregated by source before row caps."
+            ),
+        },
+        "uncertainty_config": {
+            "loss_function": "RMSEWithUncertainty",
+            "distribution_space": "asinh flow residual",
+            "interval_levels": list(UNCERTAINTY_INTERVAL_LEVELS),
+            "crps_monte_carlo_samples": CRPS_MONTE_CARLO_SAMPLES,
+        },
+        "stress_test_config": {
+            "sample_rows": STRESS_SAMPLE_ROWS,
+            "scenarios": [
+                "10 percent of dynamic inputs set missing",
+                "10 percent feature-standard-deviation Gaussian noise on dynamic inputs",
+                "latest day flow, precipitation and meteorology unavailable",
+                "latest three-day flow/precipitation gap",
+            ],
+            "seed": int(config["seed"]),
+        },
+        "run_name": args.run_name or None,
         "validation_protocol": (
             "Catchments are held out by the provided manifest; no validation-based "
             "early stopping or threshold tuning is performed. Climatology and event "
@@ -1163,10 +1806,30 @@ def main() -> None:
         ),
         "features": list(X_train.columns),
         "model_config": model_config,
+        "compute": {
+            "task_type": args.task_type,
+            "devices": "0" if args.task_type == "GPU" else None,
+        },
+        "efficiency": {
+            "total_runtime_seconds": float(total_runtime_seconds),
+            "peak_process_rss_bytes": (
+                int(resource_monitor.peak_rss_bytes)
+                if resource_monitor.peak_rss_bytes
+                else None
+            ),
+            "peak_process_rss_mb": (
+                float(resource_monitor.peak_rss_bytes / (1024 * 1024))
+                if resource_monitor.peak_rss_bytes
+                else None
+            ),
+            "model_artifact_bytes": int(model_artifact_bytes),
+            "memory_sampling_interval_seconds": 1.0,
+        },
         "seed": config["seed"],
         "horizons": horizon_results,
     }
-    with (REPORT_DIR / "benchmark_metrics.json").open("w", encoding="utf-8") as handle:
+    metrics_path = REPORT_DIR / f"benchmark_metrics{artifact_suffix}.json"
+    with metrics_path.open("w", encoding="utf-8") as handle:
         json.dump(metrics, handle, indent=2, allow_nan=False)
 
     print(f"Saved models under {MODEL_DIR}", flush=True)
