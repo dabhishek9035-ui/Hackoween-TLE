@@ -107,7 +107,7 @@ function percentile(sorted: number[], p: number) {
   return sorted[idx];
 }
 
-export function runForecast(c: Catchment, asOf: string, inputs: ForecastInputs, horizon: Horizon = 5): ForecastResult {
+export function runForecast(c: Catchment, asOf: string, inputs: ForecastInputs, horizon: Horizon = 7): ForecastResult {
   const ic = asInternal(c);
   const history = makeHistory(c, asOf, 365);
   const sortedYear = history.slice(-365).map((p) => p.discharge).filter((v): v is number => v !== null).sort((a, b) => a - b);
@@ -120,7 +120,7 @@ export function runForecast(c: Catchment, asOf: string, inputs: ForecastInputs, 
   const tempDrift = 1 - 0.002 * (inputs.tempC - c.defaultInputs.tempC);
 
   const rnd = rngFrom(`${c.id}|${asOf}|${inputs.forecastRainMm}|${inputs.antecedentRainMm}|${inputs.tempC}|${inputs.gapDays}|${inputs.quality}`);
-  const maxDay = 5;
+  const maxDay = 7;
   const series: ForecastPoint[] = [];
   const perDay: Record<number, { q: number; lower: number; upper: number; pH: number; pE: number }> = {};
 
@@ -153,16 +153,16 @@ export function runForecast(c: Catchment, asOf: string, inputs: ForecastInputs, 
     prediction_intervals: { lower: HORIZONS.map((h) => perDay[h].lower), upper: HORIZONS.map((h) => perDay[h].upper) },
   };
 
-  const pHigh = { 1: perDay[1].pH, 3: perDay[3].pH, 5: perDay[5].pH } as Record<Horizon, number>;
-  const pExt = { 1: perDay[1].pE, 3: perDay[3].pE, 5: perDay[5].pE } as Record<Horizon, number>;
-  const q5 = perDay[5].q;
-  const risk: RiskLevel = pHigh[5] >= 0.55 || q5 >= c.thresholdHigh ? 'high' : pHigh[5] >= 0.25 ? 'watch' : 'low';
+  const pHigh = { 1: perDay[1].pH, 3: perDay[3].pH, 7: perDay[7].pH } as Record<Horizon, number>;
+  const pExt = { 1: perDay[1].pE, 3: perDay[3].pE, 7: perDay[7].pE } as Record<Horizon, number>;
+  const q7 = perDay[7].q;
+  const risk: RiskLevel = pHigh[7] >= 0.55 || q7 >= c.thresholdHigh ? 'high' : pHigh[7] >= 0.25 ? 'watch' : 'low';
 
   return {
     catchmentId: c.id,
     asOf,
     horizon,
-    source: 'catboost_caravan',
+    source: 'mock_fallback',
     generatedAt: new Date().toISOString(),
     output,
     series,
@@ -220,18 +220,18 @@ export const catchments: Catchment[] = rawCatchments.map((row) => {
 export function buildRiskBoard(): RiskBoardEntry[] {
   const asOf = todayIso();
   return catchments.map((c) => {
-    const result = runForecast(c, asOf, c.defaultInputs, 5);
+    const result = runForecast(c, asOf, c.defaultInputs, 7);
     const current = c.lastRecorded.discharge;
     const predVal = result.output.predicted_discharge[2];
-    const phVal = result.pHigh[5];
-    const peVal = result.pExt[5];
+    const phVal = result.pHigh[7];
+    const peVal = result.pExt[7];
     return {
       catchment: c,
       risk: result.risk,
       current,
-      predicted5: predVal,
-      pHigh5: phVal,
-      pExt5: peVal,
+      predicted5: 0,
+      pHigh5: 0,
+      pExt5: 0,
       predicted7: predVal,
       pHigh7: phVal,
       pExt7: peVal,

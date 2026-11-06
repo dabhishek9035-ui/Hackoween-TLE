@@ -280,7 +280,7 @@ const DEFAULT_CATCHMENT = 'camels_01047000';
 
 export default function PredictPage() {
   const [catchmentId, setCatchmentId] = useState(DEFAULT_CATCHMENT);
-  const [horizon, setHorizon] = useState<Horizon>(5);
+  const [horizon, setHorizon] = useState<Horizon>(7);
   const [windowDays, setWindowDays] = useState(180);
   const [origin, setOrigin] = useState('');
   const [inputs, setInputs] = useState<ForecastInputs>({ antecedentRainMm: 90, forecastRainMm: 85, tempC: 24, gapDays: 0, quality: 'good' });
@@ -313,7 +313,7 @@ export default function PredictPage() {
 
     const nextCatchment = catchments.some((item) => item.id === requestedCatchment) ? requestedCatchment! : catchments[0].id;
     const chosen = catchments.find((item) => item.id === nextCatchment)!;
-    const nextH = HORIZONS.includes(requestedH as Horizon) ? (requestedH as Horizon) : 5;
+    const nextH = HORIZONS.includes(requestedH as Horizon) ? (requestedH as Horizon) : 7;
     const nextOrigin = clampDate(requestedOrigin ?? chosen.lastRecorded.date, shiftDate(chosen.lastRecorded.date, -364), chosen.lastRecorded.date);
 
     setCatchmentId(nextCatchment);

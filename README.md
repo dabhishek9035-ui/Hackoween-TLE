@@ -2,6 +2,8 @@
 
 This repository builds multi-horizon streamflow forecasts from Caravan v1.6. The training entry point is `train.py`; it fits separate CatBoost residual models for 1-, 3-, and 5-day forecasts and scores each against persistence on the same held-out catchments.
 
+The inference backend uses the bundled FIMO model suite in `fimo/` for its 1-, 3-, and 7-day forecasts. `fimo/assemble.py` verifies source artifact hashes and assembles the five prediction heads into `fimo/fimo_bundle.joblib`. The backend keeps the CatBoost models as a fallback if the FIMO bundle is unavailable.
+
 The challenge document describes a proposed challenge, not a released leaderboard. The repository's deterministic public catchment split and persistence comparison are development benchmarks, not official BASINSHIFT scores.
 
 ## Project layout
@@ -9,7 +11,8 @@ The challenge document describes a proposed challenge, not a released leaderboar
 - `configs/`: forecast horizons and model settings.
 - `data/Caravan/`: archive, generated manifests, metadata, and data documentation.
 - `logs/`: download, scan, and training logs.
-- `models/`: trained CatBoost models.
+- `models/`: trained CatBoost benchmark models used as a fallback.
+- `fimo/`: verified FIMO mean, quantile, and exceedance models used for 1-, 3-, and 7-day backend forecasts.
 - `reports/`: benchmark metrics, coverage, and attribute inventories.
 - `scripts/`: split generation, data audits, and finalization.
 - `src/basinshift/`: shared Caravan archive reader for NetCDF3 and NetCDF4.

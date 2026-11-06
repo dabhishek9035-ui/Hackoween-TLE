@@ -124,25 +124,24 @@ export async function fetchCustomForecast(
     const mmToM3s = area / 86.4;
     const res1 = 0.45 * inputs.precip_lag_0 * 0.15;
     const res3 = 0.35 * inputs.precip_sum_3d * 0.12;
-    const res5 = 0.25 * inputs.precip_sum_7d * 0.08;
     const res7 = 0.15 * inputs.precip_sum_14d * 0.05;
 
     const q1 = Math.max(0, q0 + res1);
     const q3 = Math.max(0, q0 + res3);
-    const q5 = Math.max(0, q0 + res5);
+    const q7 = Math.max(0, q0 + res7);
 
-    const horizons = [1, 3, 5];
-    const runoff = [q1, q3, q5].map((v) => Math.round(v * 100) / 100);
-    const discharges = [q1 * mmToM3s, q3 * mmToM3s, q5 * mmToM3s].map((v) => Math.round(v * 10) / 10);
-    const residuals = [res1, res3, res5].map((v) => Math.round(v * 100) / 100);
+    const horizons = [1, 3, 7];
+    const runoff = [q1, q3, q7].map((v) => Math.round(v * 100) / 100);
+    const discharges = [q1 * mmToM3s, q3 * mmToM3s, q7 * mmToM3s].map((v) => Math.round(v * 10) / 10);
+    const residuals = [res1, res3, res7].map((v) => Math.round(v * 100) / 100);
 
     const baseDate = inputs.originDate || new Date().toISOString().slice(0, 10);
     const baseDt = new Date(baseDate);
 
-    const series = [1, 2, 3, 4, 5].map((d) => {
+    const series = [1, 2, 3, 4, 5, 6, 7].map((d) => {
       const target = new Date(baseDt);
       target.setDate(target.getDate() + d);
-      const val = discharges[Math.min(discharges.length - 1, Math.floor((d - 1) / 2))];
+      const val = d <= 1 ? discharges[0] : d <= 3 ? discharges[1] : discharges[1] + ((discharges[2] - discharges[1]) * (d - 3)) / 4;
       return {
         date: target.toISOString().slice(0, 10),
         discharge: val,

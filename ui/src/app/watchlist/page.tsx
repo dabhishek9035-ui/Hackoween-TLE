@@ -29,7 +29,7 @@ const WATCH_CSS = `
 export default function WatchlistPage() {
   const { data: board = [], isLoading } = useQuery({ queryKey: ['risk-board'], queryFn: ({ signal }) => fetchRiskBoard(signal) });
 
-  const sorted = useMemo(() => [...board].sort((a, b) => RISK_ORDER[a.risk] - RISK_ORDER[b.risk] || (b.pHigh5 ?? b.pHigh7 ?? 0) - (a.pHigh5 ?? a.pHigh7 ?? 0)), [board]);
+  const sorted = useMemo(() => [...board].sort((a, b) => RISK_ORDER[a.risk] - RISK_ORDER[b.risk] || (b.pHigh7 ?? b.pHigh5 ?? 0) - (a.pHigh7 ?? a.pHigh5 ?? 0)), [board]);
   const underWatch = sorted.filter((entry) => entry.risk !== 'low');
   const steady = sorted.filter((entry) => entry.risk === 'low');
   const counts = { high: board.filter((e) => e.risk === 'high').length, watch: board.filter((e) => e.risk === 'watch').length, low: board.filter((e) => e.risk === 'low').length };
@@ -37,7 +37,7 @@ export default function WatchlistPage() {
 
   return <section className="catalog-page">
     <style dangerouslySetInnerHTML={{ __html: WATCH_CSS }} />
-    <div className="catalog-top"><PageHeading label="THE WATCH LIST" title={<>Where the water<br/><span>leans high.</span></>} description="Catchments whose 5-day odds of crossing the high-flow threshold put them on watch. Regions listed below each entry are exposed if the river crests." count={`${underWatch.length} watched`} />
+    <div className="catalog-top"><PageHeading label="THE WATCH LIST" title={<>Where the water<br/><span>leans high.</span></>} description="Catchments whose 7-day odds of crossing the high-flow threshold put them on watch. Regions listed below each entry are exposed if the river crests." count={`${underWatch.length} watched`} />
       <div className="catalog-mark"><Eye size={16}/><span>REBUILT FROM THE<br/>LIVE RISK BOARD</span></div></div>
 
     <Reveal>
@@ -45,7 +45,7 @@ export default function WatchlistPage() {
         <div className="glass-card"><strong style={{ color: RISK_META.high.color }}>{counts.high}</strong><span>HIGH RISK · RED</span></div>
         <div className="glass-card"><strong style={{ color: RISK_META.watch.color }}>{counts.watch}</strong><span>ON WATCH · AMBER</span></div>
         <div className="glass-card"><strong style={{ color: RISK_META.low.color }}>{counts.low}</strong><span>HOLDING STEADY · GREEN</span></div>
-        <div className="glass-card"><strong>{peak ? fmtP(peak.pHigh5 ?? peak.pHigh7) : '—'}</strong><span>PEAK 5-DAY ODDS{peak ? ` · ${peak.catchment.code}` : ''}</span></div>
+        <div className="glass-card"><strong>{peak ? fmtP(peak.pHigh7 ?? peak.pHigh5) : '—'}</strong><span>PEAK 7-DAY ODDS{peak ? ` · ${peak.catchment.code}` : ''}</span></div>
       </div>
     </Reveal>
 
@@ -53,14 +53,14 @@ export default function WatchlistPage() {
 
     {!isLoading && <>
       <div className="watch-section-label"><Eyebrow>UNDER WATCH · RED &amp; AMBER</Eyebrow></div>
-      {underWatch.length === 0 && <div className="glass-card empty-card"><strong>Nothing is on watch right now.</strong><p>No catchment’s 5-day odds cross the watch band. Check the workbench for scenario forecasts.</p></div>}
+      {underWatch.length === 0 && <div className="glass-card empty-card"><strong>Nothing is on watch right now.</strong><p>No catchment’s 7-day odds cross the watch band. Check the workbench for scenario forecasts.</p></div>}
       <div className="dam-grid">{underWatch.map((entry, index) => <WatchCard key={entry.catchment.id} entry={entry} index={index} />)}</div>
 
       <div className="watch-section-label"><Eyebrow>HOLDING STEADY · GREEN</Eyebrow></div>
       <div className="steady-list">{steady.map((entry) => (
         <Link href={`/predict?catchment=${entry.catchment.id}`} key={entry.catchment.id} className="glass-card steady-row">
           <RiskDotInline level={entry.risk} />
-          <span style={{ display: 'grid', gap: 2 }}><strong>{entry.catchment.name}</strong><span>{entry.catchment.river} · P(high) {fmtP(entry.pHigh5 ?? entry.pHigh7)}</span></span>
+          <span style={{ display: 'grid', gap: 2 }}><strong>{entry.catchment.name}</strong><span>{entry.catchment.river} · P(high) {fmtP(entry.pHigh7 ?? entry.pHigh5)}</span></span>
           <span>{fmtQ(entry.catchment.lastRecorded.discharge ?? 0)} m³/s</span>
           <span className="list-arrow" style={{ color: '#65cbd7' }}>↗</span>
         </Link>
@@ -78,14 +78,14 @@ export default function WatchlistPage() {
 
 function WatchCard({ entry, index }: { entry: RiskBoardEntry; index: number }) {
   const { catchment: c, risk, current } = entry;
-  const predicted = entry.predicted5 ?? entry.predicted7 ?? 0;
-  const pHigh = entry.pHigh5 ?? entry.pHigh7 ?? 0;
-  const pExt = entry.pExt5 ?? entry.pExt7 ?? 0;
+  const predicted = entry.predicted7 ?? entry.predicted5 ?? 0;
+  const pHigh = entry.pHigh7 ?? entry.pHigh5 ?? 0;
+  const pExt = entry.pExt7 ?? entry.pExt5 ?? 0;
   const meta = RISK_META[risk];
   const share = predicted / Math.max(1, c.thresholdHigh);
   const why = risk === 'high'
-    ? `5-day forecast sits at or above the high-flow threshold with ${(pHigh * 100).toFixed(0)}% exceedance odds — treat as the priority basin.`
-    : `Forecast pressure is building: ${(pHigh * 100).toFixed(0)}% odds of crossing T(c) within 5 days, ${(pExt * 100).toFixed(0)}% for the extreme band.`;
+    ? `7-day forecast sits at or above the high-flow threshold with ${(pHigh * 100).toFixed(0)}% exceedance odds — treat as the priority basin.`
+    : `Forecast pressure is building: ${(pHigh * 100).toFixed(0)}% odds of crossing T(c) within 7 days, ${(pExt * 100).toFixed(0)}% for the extreme band.`;
   return <Reveal delay={Math.min(index % 4, 3) * .07}>
     <article className="glass-card watch-card" style={{ borderColor: `${meta.color}30` }}>
       <div className="watch-card-top"><span className="dam-index">{String(index + 1).padStart(2, '0')} · {c.code}</span><RiskBadge level={risk} /></div>

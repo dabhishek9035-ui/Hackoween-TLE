@@ -4,8 +4,8 @@
    section 8.2. Forecasts are produced by trained CatBoost multi-horizon
    models on Caravan streamflow records. */
 
-export type Horizon = 1 | 3 | 5;
-export const HORIZONS: Horizon[] = [1, 3, 5];
+export type Horizon = 1 | 3 | 7;
+export const HORIZONS: Horizon[] = [1, 3, 7];
 
 export type QualityFlag = 'good' | 'degraded' | 'missing';
 export type RiskLevel = 'low' | 'watch' | 'high';
@@ -71,8 +71,8 @@ export type ForecastResult = {
   horizon: Horizon;
   source: string;
   generatedAt: string;
-  output: ForecastOutput; // the official [1, 3, 5] set
-  series: ForecastPoint[]; // per-day path for the chart, 1..5 days
+  output: ForecastOutput; // the trained [1, 3, 7] set
+  series: ForecastPoint[]; // per-day path for the chart, 1..7 days
   risk: RiskLevel;
   pHigh: Record<Horizon, number>;
   pExt: Record<Horizon, number>;

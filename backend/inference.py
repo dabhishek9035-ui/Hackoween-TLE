@@ -7,9 +7,12 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(os.cpu_count() or 1))
+
 import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
+from backend.fimo_models import FimoModelSuite, build_fimo_custom_features, build_fimo_features
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -44,14 +47,24 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_DIR = PROJECT_ROOT / "models"
 
 # Forecast horizons supported
-HORIZONS = [1, 3, 5]
+HORIZONS = [1, 3, 7]
 
 
 class CatBoostForecastEngine:
     def __init__(self) -> None:
         self.models: dict[int, CatBoostRegressor] = {}
         self.feature_names: list[str] = []
+        try:
+            self.fimo = FimoModelSuite()
+            print(f"Loaded FIMO bundle from {self.fimo_bundle_path}")
+        except Exception as exc:
+            self.fimo = None
+            print(f"Warning: Failed to load FIMO bundle: {exc}")
         self.load_models()
+
+    @property
+    def fimo_bundle_path(self) -> Path:
+        return PROJECT_ROOT / "fimo" / "fimo_bundle.joblib"
 
     def load_models(self) -> None:
         """Load trained CatBoost models for available horizons."""
@@ -71,7 +84,7 @@ class CatBoostForecastEngine:
                 print(f"Warning: Model file not found: {path}")
 
     def is_ready(self) -> bool:
-        return len(self.models) > 0
+        return self.fimo is not None or len(self.models) > 0
 
     def build_features(
         self,
@@ -205,33 +218,34 @@ class CatBoostForecastEngine:
         runoff_coeff = 0.45
         rain_total_m3s = (float(inputs.forecastRainMm) * runoff_coeff) * mm_to_m3s
 
-        # Predict for each horizon
-        predicted_q_by_h: dict[int, float] = {}
-        for h in [1, 3, 5]:
-            if h in self.models:
+        # FIMO heads predict discharge directly in mm/day at the trained horizons.
+        flow_history_mm = [flow * m3s_to_mm for flow in history_flows]
+        fimo_features = build_fimo_features(flow_history_mm, inputs.antecedentRainMm, inputs.tempC, as_of_dt)
+        fimo_predictions: dict[int, dict[str, float]] = {}
+        if self.fimo is not None:
+            for h in HORIZONS:
                 try:
-                    res_mm = float(self.models[h].predict(features_df)[0])
-                    # Predicted runoff depth (mm/day) = persistence + residual
-                    pred_mm = max(0.0, q0_mm + res_mm)
-                    pred_m3s = pred_mm * mm_to_m3s
+                    fimo_predictions[h] = self.fimo.predict(fimo_features, h)
+                except Exception as err:
+                    print(f"FIMO inference error on horizon {h}: {err}")
+
+        predicted_q_by_h: dict[int, float] = {}
+        for h in HORIZONS:
+            if h in fimo_predictions:
+                pred_m3s = fimo_predictions[h]["mean"] * mm_to_m3s
+            elif {1: 1, 3: 3, 7: 5}[h] in self.models:
+                try:
+                    fallback_horizon = {1: 1, 3: 3, 7: 5}[h]
+                    residual_mm = float(self.models[fallback_horizon].predict(features_df)[0])
+                    pred_m3s = max(0.0, q0_mm + residual_mm) * mm_to_m3s
                 except Exception as err:
                     print(f"Inference error on model h={h}: {err}")
                     pred_m3s = q0_m3s
             else:
                 pred_m3s = q0_m3s
-
-            # Rain response dynamics: peaks around day 2-3 and attenuates
-            rain_fraction = (h / 2.5) * math.exp(1.0 - h / 2.5)
-            pred_m3s += rain_total_m3s * rain_fraction * 0.25
             predicted_q_by_h[h] = max(0.0, pred_m3s)
 
-        # Compute multi-horizon forecasts [1, 3, 5]
-        q1 = predicted_q_by_h.get(1, q0_m3s)
-        q3 = predicted_q_by_h.get(3, q0_m3s)
-        q5 = predicted_q_by_h.get(5, q3)
-
-        # Horizons requested by the frontend contract [1, 3, 5]
-        target_horizons = [1, 3, 5]
+        target_horizons = list(HORIZONS)
 
         pred_discharges: list[float] = []
         p_high_list: list[float] = []
@@ -249,19 +263,22 @@ class CatBoostForecastEngine:
             qh = round(predicted_q_by_h.get(h, q0_m3s), 1)
             pred_discharges.append(qh)
 
-            # Horizon-scaled uncertainty band
-            band = base_sigma * math.sqrt(1.0 + h / 3.0)
-            lower = max(0.0, round(qh - 1.28 * band, 1))
-            upper = round(qh + 1.28 * band, 1)
+            if h in fimo_predictions:
+                model_result = fimo_predictions[h]
+                lower = max(0.0, round(model_result["lower"] * mm_to_m3s, 1))
+                upper = max(lower, round(model_result["upper"] * mm_to_m3s, 1))
+                p_h = model_result["p_high"]
+                p_e = model_result["p_ext"]
+            else:
+                band = base_sigma * math.sqrt(1.0 + h / 3.0)
+                lower = max(0.0, round(qh - 1.28 * band, 1))
+                upper = round(qh + 1.28 * band, 1)
+                z_high = (qh - t_high) / (0.72 * max(1.0, band))
+                z_ext = (qh - t_ext) / (0.72 * max(1.0, band))
+                p_h = 1.0 / (1.0 + math.exp(-max(-8.0, min(8.0, z_high))))
+                p_e = 1.0 / (1.0 + math.exp(-max(-8.0, min(8.0, z_ext))))
             lowers.append(lower)
             uppers.append(upper)
-
-            # Exceedance probabilities via logistic CDF
-            z_high = (qh - t_high) / (0.72 * max(1.0, band))
-            z_ext = (qh - t_ext) / (0.72 * max(1.0, band))
-            p_h = 1.0 / (1.0 + math.exp(-max(-8.0, min(8.0, z_high))))
-            p_e = 1.0 / (1.0 + math.exp(-max(-8.0, min(8.0, z_ext))))
-
             p_h = round(float(np.clip(p_h, 0.005, 0.995)), 2)
             p_e = round(float(np.clip(p_e, 0.003, 0.985)), 2)
 
@@ -270,13 +287,9 @@ class CatBoostForecastEngine:
             p_high_dict[str(h)] = p_h
             p_ext_dict[str(h)] = p_e
 
-        # Backwards compatibility alias for older 7-day keys
-        p_high_dict["7"] = p_high_dict.get("5", p_high_list[-1])
-        p_ext_dict["7"] = p_ext_dict.get("5", p_ext_list[-1])
-
-        # Daily trajectory (days 1..5) for smooth charting
+        # Daily trajectory (days 1..7), interpolated between trained horizons.
         series: list[ForecastPoint] = []
-        for d in range(1, 6):
+        for d in range(1, 8):
             dt = as_of_dt + timedelta(days=d)
             if d == 1:
                 qd = predicted_q_by_h[1]
@@ -284,10 +297,10 @@ class CatBoostForecastEngine:
                 qd = (predicted_q_by_h[1] + predicted_q_by_h[3]) * 0.5
             elif d == 3:
                 qd = predicted_q_by_h[3]
-            elif d == 4:
-                qd = (predicted_q_by_h[3] + predicted_q_by_h[5]) * 0.5
+            elif d in (4, 5, 6):
+                qd = predicted_q_by_h[3] + (predicted_q_by_h[7] - predicted_q_by_h[3]) * (d - 3) / 4
             else:
-                qd = predicted_q_by_h[5]
+                qd = predicted_q_by_h[7]
 
             day_band = base_sigma * math.sqrt(1.0 + d / 3.0)
             d_low = max(0.0, round(qd - 1.28 * day_band, 1))
@@ -301,12 +314,12 @@ class CatBoostForecastEngine:
                 )
             )
 
-        # Risk classification based on 5-day outlook
-        p5_high = p_high_dict.get("5", p_high_list[-1])
-        q5_val = pred_discharges[-1]
-        if p5_high >= 0.55 or q5_val >= t_high:
+        # Risk classification based on the 7-day outlook.
+        p7_high = p_high_dict["7"]
+        q7_val = pred_discharges[-1]
+        if p7_high >= 0.55 or q7_val >= t_high:
             risk: RiskLevel = "high"
-        elif p5_high >= 0.25:
+        elif p7_high >= 0.25:
             risk = "watch"
         else:
             risk = "low"
@@ -325,7 +338,7 @@ class CatBoostForecastEngine:
             catchmentId=catchment.id,
             asOf=as_of,
             horizon=target_horizon,
-            source="catboost_caravan",
+            source="fimo_gbm" if self.fimo is not None else "catboost_caravan",
             generatedAt=datetime.utcnow().isoformat() + "Z",
             output=output,
             series=series,
@@ -376,7 +389,7 @@ class CatBoostForecastEngine:
         inputs_dict = inputs.model_dump()
         features_dict: dict[str, Any] = {k: inputs_dict.get(k) for k in feature_keys}
         features_dict["day_of_year"] = float(inputs_dict.get("day_of_year", 180.0))
-        features_dict["static_other_area"] = float(inputs.area_km2)
+        features_dict["static_other_area"] = float(inputs.areaSqKm)
         features_dict["static_other_gauge_lat"] = 45.0
         features_dict["static_other_gauge_lon"] = -70.0
         features_dict["static_hydroatlas_ele_mt_sav"] = 400.0
@@ -392,29 +405,36 @@ class CatBoostForecastEngine:
         q0_mm = float(inputs.flow_lag_0)
         area = max(1.0, float(inputs.areaSqKm))
         mm_to_m3s = area / 86.4
+        horizons = list(HORIZONS)
 
-        # Predict residuals using trained CatBoost models
-        res_1 = float(self.models[1].predict(features_df)[0]) if 1 in self.models else 0.0
-        res_3 = float(self.models[3].predict(features_df)[0]) if 3 in self.models else 0.0
-        res_5 = float(self.models[5].predict(features_df)[0]) if 5 in self.models else 0.0
+        origin_str = inputs.originDate or date.today().strftime("%Y-%m-%d")
+        try:
+            origin_dt = datetime.strptime(origin_str, "%Y-%m-%d").date()
+        except ValueError:
+            origin_dt = date.today()
 
-        q1_mm = max(0.0, q0_mm + res_1)
-        q3_mm = max(0.0, q0_mm + res_3)
-        q5_mm = max(0.0, q0_mm + res_5)
-        horizons = [1, 3, 5]
-        predicted_runoff_mm = [round(q1_mm, 2), round(q3_mm, 2), round(q5_mm, 2)]
-        residuals_mm = [round(res_1, 2), round(res_3, 2), round(res_5, 2)]
+        fimo_custom_predictions: dict[int, dict[str, float]] = {}
+        if self.fimo is not None:
+            model_features = build_fimo_custom_features(inputs.model_dump(), origin_dt)
+            for horizon in horizons:
+                fimo_custom_predictions[horizon] = self.fimo.predict(model_features, horizon)
 
-        predicted_discharge_m3s = [
-            round(q1_mm * mm_to_m3s, 1),
-            round(q3_mm * mm_to_m3s, 1),
-            round(q5_mm * mm_to_m3s, 1),
-        ]
+        if fimo_custom_predictions:
+            predicted_runoff_mm = [round(fimo_custom_predictions[h]["mean"], 2) for h in horizons]
+            residuals_mm = [round(value - q0_mm, 2) for value in predicted_runoff_mm]
+            predicted_discharge_m3s = [round(value * mm_to_m3s, 1) for value in predicted_runoff_mm]
+        else:
+            residuals_by_h = {
+                1: float(self.models[1].predict(features_df)[0]) if 1 in self.models else 0.0,
+                3: float(self.models[3].predict(features_df)[0]) if 3 in self.models else 0.0,
+                7: float(self.models[5].predict(features_df)[0]) if 5 in self.models else 0.0,
+            }
+            residuals_mm = [round(residuals_by_h[h], 2) for h in horizons]
+            predicted_runoff_mm = [round(max(0.0, q0_mm + residuals_by_h[h]), 2) for h in horizons]
+            predicted_discharge_m3s = [round(value * mm_to_m3s, 1) for value in predicted_runoff_mm]
 
         t_high = float(inputs.thresholdHigh)
         t_ext = float(inputs.thresholdExtreme)
-
-        # Uncertainty intervals (80% confidence)
         base_sigma_m3s = max(2.0, (q0_mm * mm_to_m3s) * 0.12)
         lowers: list[float] = []
         uppers: list[float] = []
@@ -423,16 +443,22 @@ class CatBoostForecastEngine:
 
         for idx, h in enumerate(horizons):
             qh_m3s = predicted_discharge_m3s[idx]
-            band = base_sigma_m3s * math.sqrt(1.0 + h / 2.8)
-            lowers.append(max(0.0, round(qh_m3s - 1.28 * band, 1)))
-            uppers.append(round(qh_m3s + 1.28 * band, 1))
-
-            z_high = (qh_m3s - t_high) / (0.72 * max(1.0, band))
-            z_ext = (qh_m3s - t_ext) / (0.72 * max(1.0, band))
-            ph = 1.0 / (1.0 + math.exp(-max(-8.0, min(8.0, z_high))))
-            pe = 1.0 / (1.0 + math.exp(-max(-8.0, min(8.0, z_ext))))
-            p_high_list.append(round(float(np.clip(ph, 0.005, 0.995)), 2))
-            p_ext_list.append(round(float(np.clip(pe, 0.003, 0.985)), 2))
+            if h in fimo_custom_predictions:
+                model_result = fimo_custom_predictions[h]
+                lowers.append(max(0.0, round(model_result["lower"] * mm_to_m3s, 1)))
+                uppers.append(max(lowers[-1], round(model_result["upper"] * mm_to_m3s, 1)))
+                p_high_list.append(round(float(np.clip(model_result["p_high"], 0.005, 0.995)), 2))
+                p_ext_list.append(round(float(np.clip(model_result["p_ext"], 0.003, 0.985)), 2))
+            else:
+                band = base_sigma_m3s * math.sqrt(1.0 + h / 2.8)
+                lowers.append(max(0.0, round(qh_m3s - 1.28 * band, 1)))
+                uppers.append(round(qh_m3s + 1.28 * band, 1))
+                z_high = (qh_m3s - t_high) / (0.72 * max(1.0, band))
+                z_ext = (qh_m3s - t_ext) / (0.72 * max(1.0, band))
+                ph = 1.0 / (1.0 + math.exp(-max(-8.0, min(8.0, z_high))))
+                pe = 1.0 / (1.0 + math.exp(-max(-8.0, min(8.0, z_ext))))
+                p_high_list.append(round(float(np.clip(ph, 0.005, 0.995)), 2))
+                p_ext_list.append(round(float(np.clip(pe, 0.003, 0.985)), 2))
 
         # Risk level
         p_high_max = max(p_high_list)
@@ -444,15 +470,9 @@ class CatBoostForecastEngine:
         else:
             risk = "low"
 
-        # 5-day daily series path for plotting
-        origin_str = inputs.originDate or date.today().strftime("%Y-%m-%d")
-        try:
-            origin_dt = datetime.strptime(origin_str, "%Y-%m-%d").date()
-        except ValueError:
-            origin_dt = date.today()
-
+        # Daily path is interpolated between the 1-, 3-, and 7-day model outputs.
         series: list[ForecastPoint] = []
-        for d in range(1, 6):
+        for d in range(1, 8):
             dt = origin_dt + timedelta(days=d)
             if d == 1:
                 qd_m3s = predicted_discharge_m3s[0]
@@ -460,8 +480,8 @@ class CatBoostForecastEngine:
                 qd_m3s = (predicted_discharge_m3s[0] + predicted_discharge_m3s[1]) * 0.5
             elif d == 3:
                 qd_m3s = predicted_discharge_m3s[1]
-            elif d == 4:
-                qd_m3s = (predicted_discharge_m3s[1] + predicted_discharge_m3s[2]) * 0.5
+            elif d in (4, 5, 6):
+                qd_m3s = predicted_discharge_m3s[1] + (predicted_discharge_m3s[2] - predicted_discharge_m3s[1]) * (d - 3) / 4
             else:
                 qd_m3s = predicted_discharge_m3s[2]
 

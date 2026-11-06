@@ -1,0 +1,65 @@
+{
+  "schema": "basinshift-models-manifest-v1",
+  "created_utc": "2026-11-05",
+  "features": [
+    "sf_lag1",
+    "sf_lag3",
+    "sf_lag7",
+    "sf_rollmean7",
+    "sf_rollmax7",
+    "sf_rollmean30",
+    "sf_rollmax30",
+    "pr_lag1",
+    "pr_lag3",
+    "pr_rollsum7",
+    "pr_rollsum30",
+    "t2m_lag1",
+    "doy_sin",
+    "doy_cos"
+  ],
+  "horizons_days": [
+    1,
+    3,
+    7
+  ],
+  "target_unit": "mm_per_day",
+  "training": {
+    "method": "sklearn HistGradientBoosting (max_iter=200, lr=0.08, early_stopping=True, random_state=42)",
+    "train_basins": "data/processed/split_train.txt (12469 basins, seed 42, >=730d overlap)",
+    "train_origins": "train-side origins < per-basin temporal cutoff (508,881 origins x 3 horizons, row-stride 8 subsample)",
+    "code": "src/colab_pipeline.py::train_gbm_arms()"
+  },
+  "artifacts": [
+    {
+      "filename": "gbm_mean.joblib",
+      "purpose": "GBM pooled discharge mean regression (HistGradientBoostingRegressor, 15 features incl. horizon)",
+      "sha256": "d11f69ff25fb6071ce3ef2e54104daa078af244ee18bb98cccc4b5474834056f",
+      "size_bytes": 700328
+    },
+    {
+      "filename": "gbm_q05.joblib",
+      "purpose": "GBM q05 quantile regression (HistGradientBoostingRegressor loss=quantile q=0.05)",
+      "sha256": "106f0e6ec51e13d0e1d24f623e6e36ca7f0f8be8ed2ba830a39e010709b122ed",
+      "size_bytes": 750936
+    },
+    {
+      "filename": "gbm_q95.joblib",
+      "purpose": "GBM q95 quantile regression (HistGradientBoostingRegressor loss=quantile q=0.95)",
+      "sha256": "397d093f076d695c691b5ec31d191e53a10f8b2be261cefbcf03b1d5757d4639",
+      "size_bytes": 750936
+    },
+    {
+      "filename": "gbm_clf_high.joblib",
+      "purpose": "GBM high-flow exceedance classifier (HistGradientBoostingClassifier, label vs T_high p90)",
+      "sha256": "9cc6b50e35708e46d8bb18bee0761ba098c982e5041e0d9859aabe5675ea1ac2",
+      "size_bytes": 751352
+    },
+    {
+      "filename": "gbm_clf_ext.joblib",
+      "purpose": "GBM extreme-flow exceedance classifier (HistGradientBoostingClassifier, label vs T_extreme p99)",
+      "sha256": "f38d44b38fa697be89282455b6451e94152df40393dbbd9138a0c01818f36198",
+      "size_bytes": 588656
+    }
+  ],
+  "notes": "Chronos-2 (amazon/chronos-2) is zero-shot \u2014 no local weights; predictions at data/processed/predictions_chronos.parquet. Persistence needs no file."
+}

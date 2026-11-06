@@ -39,16 +39,16 @@ function pointLabel(d: object) {
   const p = d as GlobePoint;
   const meta = RISK_META[p.risk];
   const current = p.current !== null ? `${fmtQ(p.current)} ${p.unit}` : 'no reading';
-  const pred = p.predicted5 ?? p.predicted7 ?? 0;
-  const ph = p.pHigh5 ?? p.pHigh7 ?? 0;
-  const pe = p.pExt5 ?? p.pExt7 ?? 0;
+  const pred = p.predicted7 ?? p.predicted5 ?? 0;
+  const ph = p.pHigh7 ?? p.pHigh5 ?? 0;
+  const pe = p.pExt7 ?? p.pExt5 ?? 0;
   return `
     <div style="min-width:190px">
       <span class="pop-code">${p.code} · ${p.river.toUpperCase()}</span><br/>
       <b>${p.name}</b><br/>
       <span style="color:${meta.color}">● ${meta.label}</span><br/>
       Latest ${current}<br/>
-      5-day predicted ${fmtQ(pred)} ${p.unit}<br/>
+      7-day predicted ${fmtQ(pred)} ${p.unit}<br/>
       P(high flow) ${fmtP(ph)} · P(extreme) ${fmtP(pe)}<br/>
       <span style="color:#69d6e0;font-weight:600">Click to open forecast ↗</span>
     </div>`;

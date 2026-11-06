@@ -15,7 +15,7 @@ A full-stack interface for the **BASINSHIFT** flood forecasting challenge (gener
 ## Architecture & Live Backend
 
 - **Backend**: FastAPI app (`backend/main.py`) serving endpoints for health, catchments, history, CatBoost model forecasts, and the risk board.
-- **Inference Engine**: `backend/inference.py` loads trained CatBoost models (`caravan_streamflow_h1d.cbm`, `caravan_streamflow_h3d.cbm`, `caravan_streamflow_h5d.cbm`) and calculates multi-horizon flow residuals, prediction intervals, and exceedance probabilities against catchment thresholds $T(c)$.
+- **Inference Engine**: `backend/inference.py` loads the bundled FIMO mean, quantile, and exceedance models from `fimo/fimo_bundle.joblib` for 1-, 3-, and 7-day forecasts. CatBoost benchmark artifacts remain available as a fallback.
 - **Frontend**: Next.js 14 App Router with React Query. `next.config.mjs` automatically proxies `/api/*` to `http://127.0.0.1:8000/api/*`.
 - **API Client**: `ui/src/data/api.ts` directly queries the backend with safe fallback handling.
 

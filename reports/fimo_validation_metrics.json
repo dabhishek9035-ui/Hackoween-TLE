@@ -1,0 +1,162 @@
+{
+  "evaluation": {
+    "dataset": "Caravan-nc.tar.gz",
+    "split": "public_catchment_split.csv",
+    "split_seed": 2026,
+    "validation_catchments_in_split": 3256,
+    "row_cap_per_catchment": 500,
+    "horizons_days": [
+      1,
+      3,
+      7
+    ],
+    "target_unit": "mm/day",
+    "thresholds": "per-source medians of training-catchment target-flow p90/p99; validation targets are not used to set thresholds",
+    "model_training_split_note": "The FIMO manifest says it trained on 12,469 basins with seed 42 but does not include those basin IDs. This local split uses seed 2026; overlap cannot be ruled out, so scores are diagnostic rather than guaranteed leakage-free.",
+    "features_note": "Feature values are rebuilt from complete observed time series in the Caravan archive, not the API's rainfall-total approximation.",
+    "created_utc": "2026-11-05T07:42:09.204864+00:00"
+  },
+  "horizons": {
+    "1": {
+      "rows_scored": 1621479,
+      "validation_catchments_scored": 3256,
+      "fimo_mean": {
+        "rmse_mm_day": 4.004603236251072,
+        "mae_mm_day": 1.2714610980101382,
+        "r2_nse_pooled": -0.03981643904444376,
+        "bias_mm_day": 0.8396202128951641,
+        "rows": 1621479
+      },
+      "persistence": {
+        "rmse_mm_day": 3.396062586852702,
+        "mae_mm_day": 0.46564699271525495,
+        "r2_nse_pooled": 0.2521937993703951,
+        "bias_mm_day": 0.0008952073545439737,
+        "rows": 1621479
+      },
+      "quantile_05_95_interval": {
+        "nominal_coverage": 0.9,
+        "observed_coverage": 0.9816618038223128,
+        "mean_width_mm_day": 7.3349628865994925,
+        "q05_pinball_loss": 0.0578223229234287,
+        "q95_pinball_loss": 0.36980640479407556
+      },
+      "high_flow_classifier": {
+        "prevalence": 0.14919958877049902,
+        "brier_score": 0.09701329727154626,
+        "log_loss": 0.3215564747053383,
+        "roc_auc": 0.8533738034084576,
+        "accuracy_at_0_5": 0.8711250654495063,
+        "precision_at_0_5": 0.6673777019340159,
+        "recall_at_0_5": 0.2715811577189531,
+        "f1_at_0_5": 0.3860599579283842,
+        "rows": 1621479
+      },
+      "extreme_flow_classifier": {
+        "prevalence": 0.027606894693054922,
+        "brier_score": 0.027897905092751408,
+        "log_loss": 0.11230499652480352,
+        "roc_auc": 0.861804884515285,
+        "accuracy_at_0_5": 0.9677966843850583,
+        "precision_at_0_5": 0.12301466868993424,
+        "recall_at_0_5": 0.027164685908319185,
+        "f1_at_0_5": 0.04450218668228147,
+        "rows": 1621479
+      }
+    },
+    "3": {
+      "rows_scored": 1618553,
+      "validation_catchments_scored": 3256,
+      "fimo_mean": {
+        "rmse_mm_day": 3.755070516410229,
+        "mae_mm_day": 1.065968585815365,
+        "r2_nse_pooled": 0.017371807370906156,
+        "bias_mm_day": 0.3578385123280646,
+        "rows": 1618553
+      },
+      "persistence": {
+        "rmse_mm_day": 4.1317806789708635,
+        "mae_mm_day": 0.7693651552758611,
+        "r2_nse_pooled": -0.18967284104017867,
+        "bias_mm_day": 0.004042524543140083,
+        "rows": 1618553
+      },
+      "quantile_05_95_interval": {
+        "nominal_coverage": 0.9,
+        "observed_coverage": 0.966485496613333,
+        "mean_width_mm_day": 7.789635555953499,
+        "q05_pinball_loss": 0.05821718733423756,
+        "q95_pinball_loss": 0.4233244737957006
+      },
+      "high_flow_classifier": {
+        "prevalence": 0.1489694807646089,
+        "brier_score": 0.10848860460940117,
+        "log_loss": 0.35280823060427874,
+        "roc_auc": 0.7976815800177535,
+        "accuracy_at_0_5": 0.856173384498376,
+        "precision_at_0_5": 0.5677122311521817,
+        "recall_at_0_5": 0.14472347220206125,
+        "f1_at_0_5": 0.230648983247461,
+        "rows": 1618553
+      },
+      "extreme_flow_classifier": {
+        "prevalence": 0.027447355755418575,
+        "brier_score": 0.030445404333937404,
+        "log_loss": 0.1285340505345613,
+        "roc_auc": 0.7784047393639907,
+        "accuracy_at_0_5": 0.9664070314657599,
+        "precision_at_0_5": 0.0196078431372549,
+        "recall_at_0_5": 0.0045694991558806975,
+        "f1_at_0_5": 0.007411734637993355,
+        "rows": 1618553
+      }
+    },
+    "7": {
+      "rows_scored": 1613839,
+      "validation_catchments_scored": 3256,
+      "fimo_mean": {
+        "rmse_mm_day": 3.8932325638812597,
+        "mae_mm_day": 1.1421275524837626,
+        "r2_nse_pooled": -0.018900624985228154,
+        "bias_mm_day": 0.30823945156567994,
+        "rows": 1613839
+      },
+      "persistence": {
+        "rmse_mm_day": 4.396649744149174,
+        "mae_mm_day": 0.9429546256423423,
+        "r2_nse_pooled": -0.2994359347327098,
+        "bias_mm_day": -6.381672715344188e-05,
+        "rows": 1613839
+      },
+      "quantile_05_95_interval": {
+        "nominal_coverage": 0.9,
+        "observed_coverage": 0.9696586834250505,
+        "mean_width_mm_day": 7.826873287058673,
+        "q05_pinball_loss": 0.05547583104044363,
+        "q95_pinball_loss": 0.4440430503540949
+      },
+      "high_flow_classifier": {
+        "prevalence": 0.14917039432062307,
+        "brier_score": 0.11714392899683335,
+        "log_loss": 0.3756809201477221,
+        "roc_auc": 0.7543925189793772,
+        "accuracy_at_0_5": 0.842166411891149,
+        "precision_at_0_5": 0.3462037709282116,
+        "recall_at_0_5": 0.06536593876304847,
+        "f1_at_0_5": 0.10996890177853873,
+        "rows": 1613839
+      },
+      "extreme_flow_classifier": {
+        "prevalence": 0.027437681206117833,
+        "brier_score": 0.03149593936849788,
+        "log_loss": 0.13620519910376327,
+        "roc_auc": 0.7302822448551309,
+        "accuracy_at_0_5": 0.9656365969591763,
+        "precision_at_0_5": 0.011195661681098574,
+        "recall_at_0_5": 0.002890695573622403,
+        "f1_at_0_5": 0.004594977832821783,
+        "rows": 1613839
+      }
+    }
+  }
+}

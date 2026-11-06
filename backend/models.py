@@ -106,7 +106,7 @@ class ForecastRequest(BaseModel):
     catchment: Catchment | None = None
     as_of: str
     inputs: ForecastInputs
-    horizon: int = 5
+    horizon: int = 7
 
 
 class CustomModelInputs(BaseModel):

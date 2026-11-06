@@ -683,7 +683,7 @@ export default function CustomForecastLabPage() {
 
             {/* Horizons Grid */}
             <div className="output-hero" style={{ marginTop: 12 }}>
-              {(result?.horizons ?? [1, 3, 5]).map((h, i) => {
+              {(result?.horizons ?? [1, 3, 7]).map((h, i) => {
                 const q = result?.predictedDischargeM3s[i];
                 const runoff = result?.predictedRunoffMm[i];
                 const res = result?.residualsMm[i];
@@ -764,7 +764,7 @@ export default function CustomForecastLabPage() {
               <span>STATISTICAL PROBABILITY</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-              {(result?.horizons ?? [1, 3, 5]).map((h, i) => {
+              {(result?.horizons ?? [1, 3, 7]).map((h, i) => {
                 const pH = result?.highFlowProbability[i] ?? 0;
                 const pE = result?.extremeFlowProbability[i] ?? 0;
                 return (

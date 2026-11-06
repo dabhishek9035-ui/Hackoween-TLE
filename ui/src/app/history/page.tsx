@@ -56,7 +56,7 @@ export default function HistoryPage() {
             <div className="run-stat">
               <span>P(HIGH) · P(EXTREME)</span>
               <strong>{fmtP(run.pHigh)} <small>/ {fmtP(run.pExt)}</small></strong>
-              <small>horizon {HORIZONS.includes(run.horizon) ? run.horizon : 5} days</small>
+              <small>horizon {HORIZONS.includes(run.horizon) ? run.horizon : 7} days</small>
             </div>
             <div className="run-stat">
               <span>READING</span>

@@ -45,7 +45,7 @@ REPORT_FILE = PROJECT_ROOT / "reports" / "benchmark_metrics.json"
 
 app = FastAPI(
     title="BASINSHIFT Flood Intelligence Backend",
-    description="Real-time multi-horizon streamflow forecasting with CatBoost models trained on Caravan v1.6 benchmark.",
+    description="Real-time 1-, 3-, and 7-day streamflow forecasting with the bundled FIMO gradient-boosting model suite.",
     version="1.0.0",
 )
 
@@ -66,6 +66,8 @@ def health_check() -> dict[str, Any]:
         "status": "healthy",
         "service": "BASINSHIFT ML Inference Engine",
         "models_loaded": list(engine.models.keys()),
+        "fimo_bundle_loaded": engine.fimo is not None,
+        "fimo_horizons": engine.fimo.horizons if engine.fimo is not None else [],
         "catchments_registered": len(manager.list_catchments()),
         "engine_ready": engine.is_ready(),
     }
@@ -105,7 +107,7 @@ def get_history(
 
 @app.post("/api/forecast", response_model=ForecastResult)
 def run_forecast_endpoint(payload: dict[str, Any] = Body(...)) -> ForecastResult:
-    """Run CatBoost model inference to produce multi-horizon flood forecasts."""
+    """Run FIMO model inference to produce multi-horizon flood forecasts."""
     # Support both flat and nested payloads
     cid = (
         payload.get("catchmentId")
@@ -125,7 +127,7 @@ def run_forecast_endpoint(payload: dict[str, Any] = Body(...)) -> ForecastResult
             raise HTTPException(status_code=404, detail=f"Catchment '{cid}' not found")
 
     as_of = payload.get("asOf") or payload.get("as_of") or date.today().strftime("%Y-%m-%d")
-    horizon = int(payload.get("horizon", 5))
+    horizon = int(payload.get("horizon", 7))
 
     raw_inputs = payload.get("inputs") or {}
     inputs = ForecastInputs(**raw_inputs) if isinstance(raw_inputs, dict) else catchment.defaultInputs
@@ -139,7 +141,7 @@ def run_forecast_endpoint(payload: dict[str, Any] = Body(...)) -> ForecastResult
 
 @app.post("/api/predict/custom", response_model=CustomForecastResult)
 def run_custom_forecast_endpoint(inputs: CustomModelInputs) -> CustomForecastResult:
-    """Run direct multi-horizon CatBoost inference from all 32 explicit model features."""
+    """Run multi-horizon FIMO inference using the supplied catchment features."""
     return engine.predict_custom(inputs)
 
 
@@ -152,19 +154,19 @@ def get_risk_board() -> list[RiskBoardEntry]:
     for c in manager.list_catchments():
         history = manager.generate_history(c.id, today_str, 30)
         flows = [p.discharge for p in history if p.discharge is not None]
-        result = engine.predict(c, today_str, c.defaultInputs, 5, flows)
+        result = engine.predict(c, today_str, c.defaultInputs, 7, flows)
         pred_val = result.output.predicted_discharge[-1]
-        p_h = result.pHigh.get("5", result.pHigh.get("7", 0.0))
-        p_e = result.pExt.get("5", result.pExt.get("7", 0.0))
+        p_h = result.pHigh.get("7", 0.0)
+        p_e = result.pExt.get("7", 0.0)
 
         board.append(
             RiskBoardEntry(
                 catchment=c,
                 risk=result.risk,
                 current=c.lastRecorded.discharge,
-                predicted5=pred_val,
-                pHigh5=p_h,
-                pExt5=p_e,
+                predicted5=0.0,
+                pHigh5=0.0,
+                pExt5=0.0,
                 predicted7=pred_val,
                 pHigh7=p_h,
                 pExt7=p_e,
